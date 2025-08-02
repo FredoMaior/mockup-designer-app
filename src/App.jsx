@@ -190,8 +190,15 @@ function App() {
     const printArea = selectedTemplate.printableArea
     const layerLeft = layer.position.x - (layer.size / 2)
     const layerRight = layer.position.x + (layer.size / 2)
-    const layerTop = layer.position.y - (layer.size / 2)
-    const layerBottom = layer.position.y + (layer.size / 2)
+    
+    // Calculate height based on layer type
+    let layerHeight = layer.size
+    if (layer.type === 'text') {
+      layerHeight = layer.size * 0.5 // Text has different height
+    }
+    
+    const layerTop = layer.position.y - (layerHeight / 2)
+    const layerBottom = layer.position.y + (layerHeight / 2)
 
     return (
       layerLeft >= printArea.x &&
@@ -744,26 +751,8 @@ function App() {
                             <option value="right">Right</option>
                           </select>
                         </div>
-                        <div>
-                          <label className="block text-xs font-medium mb-1">Letter Spacing</label>
-                          <Input
-                            type="number"
-                            value={selectedLayerData.letterSpacing}
-                            onChange={(e) => updateSelectedLayer({ letterSpacing: parseFloat(e.target.value) })}
-                            className="w-full text-sm"
-                            step="0.1"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium mb-1">Line Height</label>
-                          <Input
-                            type="number"
-                            value={selectedLayerData.lineHeight}
-                            onChange={(e) => updateSelectedLayer({ lineHeight: parseFloat(e.target.value) })}
-                            className="w-full text-sm"
-                            step="0.1"
-                          />
-                        </div>
+
+
                         <div>
                           <label className="block text-xs font-medium mb-1">Text Decoration</label>
                           <select
@@ -777,17 +766,13 @@ function App() {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium mb-1">Text Transform</label>
-                          <select
-                            value={selectedLayerData.textTransform}
-                            onChange={(e) => updateSelectedLayer({ textTransform: e.target.value })}
-                            className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                          >
-                            <option value="none">None</option>
-                            <option value="uppercase">Uppercase</option>
-                            <option value="lowercase">Lowercase</option>
-                            <option value="capitalize">Capitalize</option>
-                          </select>
+                          <label className="block text-xs font-medium mb-1">Content</label>
+                          <textarea
+                            value={selectedLayerData.content}
+                            onChange={(e) => updateSelectedLayer({ content: e.target.value })}
+                            className="w-full p-2 border border-gray-300 rounded-md text-sm h-24"
+                            placeholder="Your text here"
+                          ></textarea>
                         </div>
                       </div>
                     )}
@@ -1194,16 +1179,7 @@ function App() {
                     step="1"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1">Opacity (%)</label>
-                  <Input
-                    type="number"
-                    value={selectedLayerData.opacity}
-                    onChange={(e) => updateSelectedLayer({ opacity: parseFloat(e.target.value) })}
-                    className="w-full text-sm"
-                    min="0" max="100"
-                  />
-                </div>
+
                 <div className="flex space-x-2">
                   <Button
                     variant="outline"
@@ -1224,16 +1200,7 @@ function App() {
                     Flip Y
                   </Button>
                 </div>
-                {selectedLayerData.type === 'text' && (
-                  <div>
-                    <label className="block text-xs font-medium mb-1">Content</label>
-                    <textarea
-                      value={selectedLayerData.content}
-                      onChange={(e) => updateSelectedLayer({ content: e.target.value })}
-                      className="w-full p-2 border border-gray-300 rounded-md text-sm h-24"
-                    ></textarea>
-                  </div>
-                )}
+
               </div>
             )}
           </div>
