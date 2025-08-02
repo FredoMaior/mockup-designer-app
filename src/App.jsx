@@ -114,7 +114,15 @@ function App() {
       }
     }
     
-    // For shapes and text, assume square/equal dimensions
+    if (layer.type === 'text') {
+      // For text, calculate height based on font size and line height
+      // Approximate text height calculation: font size * line height
+      const textHeightRatio = layer.lineHeight || 1.2
+      const heightCm = (parseFloat(widthCm) * textHeightRatio * 0.6).toFixed(1) // 0.6 is an approximation factor
+      return { width: widthCm, height: heightCm }
+    }
+    
+    // For shapes, assume square/equal dimensions
     return { width: widthCm, height: widthCm }
   }, [calculateSizeInCm, imageDimensions])
 
@@ -928,8 +936,8 @@ function App() {
                   ></div>
                 )}
                 
-                {/* Resize handle - only show for selected layer */}
-                {selectedLayer === layer.id && !layer.locked && (layer.type === 'image' || layer.type === 'freepik-vector' || layer.type === 'shape') && (
+                {/* Resize handle - now also shows for text layers */}
+                {selectedLayer === layer.id && !layer.locked && (
                   <div
                     className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-se-resize shadow-md hover:bg-blue-600 transition-colors"
                     style={{
@@ -964,8 +972,8 @@ function App() {
                   />
                 </div>
                 
-                {/* Size display in centimeters with width and height */}
-                {(selectedLayerData.type === 'image' || selectedLayerData.type === 'freepik-vector' || selectedLayerData.type === 'shape') && (
+                {/* Size display in centimeters with width and height - now includes text */}
+                {(selectedLayerData.type === 'image' || selectedLayerData.type === 'freepik-vector' || selectedLayerData.type === 'shape' || selectedLayerData.type === 'text') && (
                   <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
                     <label className="block text-xs font-medium mb-2 text-blue-800">Size on T-Shirt</label>
                     <div className="grid grid-cols-2 gap-2">
