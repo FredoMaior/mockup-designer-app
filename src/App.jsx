@@ -58,8 +58,9 @@ const fontWeights = [
   { value: '900', label: 'Black' }
 ]
 
-// Constants for size calculation
-const CANVAS_SIZE_CM = 25 // Assuming the design area on t-shirt is about 25cm wide
+// Constants for actual t-shirt dimensions in cm
+const TSHIRT_WIDTH_CM = 45
+const TSHIRT_HEIGHT_CM = 55
 
 function App() {
   const [selectedTemplate, setSelectedTemplate] = useState(mockupTemplates[0])
@@ -96,35 +97,66 @@ function App() {
   // Image dimensions state for aspect ratio calculation
   const [imageDimensions, setImageDimensions] = useState({})
 
-  // Function to calculate size in centimeters
-  const calculateSizeInCm = useCallback((sizePercent) => {
-    return ((sizePercent / 100) * CANVAS_SIZE_CM).toFixed(1)
-  }, [])
+  // Function to calculate size in centimeters based on T-shirt dimensions
+  const calculateSizeInCm = useCallback((sizePercent, dimensionType) => {
+    const canvasWidth = 500; // Fixed canvas width in pixels
+    const canvasHeight = Math.round(canvasWidth / selectedTemplate.aspectRatio); // Dynamic canvas height in pixels
+
+    // Calculate the actual pixel size of the layer based on its percentage size
+    const layerPixelWidth = (sizePercent / 100) * canvasWidth;
+    
+    // Convert pixel width to cm based on TSHIRT_WIDTH_CM
+    const widthCm = (layerPixelWidth / canvasWidth) * TSHIRT_WIDTH_CM;
+
+    if (dimensionType === 'width') {
+      return widthCm.toFixed(1);
+    } else if (dimensionType === 'height') {
+      // For height, we need to consider the layer's aspect ratio
+      const layer = designLayers.find(l => l.id === resizeLayerId || l.id === dragLayerId || l.id === selectedLayer);
+      if (layer) {
+        if (layer.type === 'image' || layer.type === 'freepik-vector') {
+          const dimensions = imageDimensions[layer.id];
+          if (dimensions) {
+            const aspectRatio = dimensions.width / dimensions.height;
+            return (widthCm / aspectRatio).toFixed(1);
+          }
+        } else if (layer.type === 'text') {
+          // Approximate text height calculation: font size * line height
+          const textHeightRatio = layer.lineHeight || 1.2;
+          // This is a rough approximation, actual text height depends on content and font metrics
+          return (widthCm * textHeightRatio * 0.6).toFixed(1); 
+        } else if (layer.type === 'shape') {
+          // For shapes, assume square for simplicity or adjust based on shapeType
+          return widthCm.toFixed(1);
+        }
+      }
+      // Fallback if layer not found or type not handled
+      return widthCm.toFixed(1); // Default to square if aspect ratio unknown
+    }
+    return "0.0"; // Should not happen
+  }, [selectedTemplate.aspectRatio, designLayers, resizeLayerId, dragLayerId, selectedLayer, imageDimensions]);
 
   // Function to calculate width and height based on aspect ratio
   const calculateDimensions = useCallback((layer) => {
-    const widthCm = calculateSizeInCm(layer.size)
-    
+    const widthCm = calculateSizeInCm(layer.size, 'width');
+    let heightCm = calculateSizeInCm(layer.size, 'height'); // Use the height calculation from calculateSizeInCm
+
+    // If it's an image or freepik vector, use its natural aspect ratio
     if (layer.type === 'image' || layer.type === 'freepik-vector') {
-      const dimensions = imageDimensions[layer.id]
+      const dimensions = imageDimensions[layer.id];
       if (dimensions) {
-        const aspectRatio = dimensions.width / dimensions.height
-        const heightCm = (parseFloat(widthCm) / aspectRatio).toFixed(1)
-        return { width: widthCm, height: heightCm }
+        const aspectRatio = dimensions.width / dimensions.height;
+        heightCm = (parseFloat(widthCm) / aspectRatio).toFixed(1);
       }
+    } else if (layer.type === 'text') {
+      // For text, use the approximated height calculation
+      const textHeightRatio = layer.lineHeight || 1.2;
+      heightCm = (parseFloat(widthCm) * textHeightRatio * 0.6).toFixed(1); // 0.6 is an approximation factor
     }
-    
-    if (layer.type === 'text') {
-      // For text, calculate height based on font size and line height
-      // Approximate text height calculation: font size * line height
-      const textHeightRatio = layer.lineHeight || 1.2
-      const heightCm = (parseFloat(widthCm) * textHeightRatio * 0.6).toFixed(1) // 0.6 is an approximation factor
-      return { width: widthCm, height: heightCm }
-    }
-    
-    // For shapes, assume square/equal dimensions
-    return { width: widthCm, height: widthCm }
-  }, [calculateSizeInCm, imageDimensions])
+    // For shapes, heightCm is already calculated as widthCm by default in calculateSizeInCm
+
+    return { width: widthCm, height: heightCm };
+  }, [calculateSizeInCm, imageDimensions]);
 
   // Function to load image dimensions
   const loadImageDimensions = useCallback((layer) => {
