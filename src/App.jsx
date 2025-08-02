@@ -28,14 +28,14 @@ import poloShirt from './assets/mockup_templates/polo_shirt_mockup.png'
 import longSleeve from './assets/mockup_templates/long_sleeve_mockup.png'
 
 const mockupTemplates = [
-  { id: 'flat-tshirt', name: 'Flat Lay T-Shirt', image: flatLayTshirt, category: 't-shirt' },
-  { id: 'hanging-tshirt', name: 'Hanging T-Shirt', image: hangingTshirt, category: 't-shirt' },
-  { id: 'front-back-tshirt', name: 'Front & Back T-Shirt', image: frontBackTshirt, category: 't-shirt' },
-  { id: 'model-tshirt', name: 'Model Wearing T-Shirt', image: modelWearingTshirt, category: 't-shirt' },
-  { id: 'hoodie-flat', name: 'Flat Lay Hoodie', image: hoodieFlat, category: 'hoodie' },
-  { id: 'tank-top', name: 'Tank Top', image: tankTop, category: 'tank-top' },
-  { id: 'polo-shirt', name: 'Polo Shirt', image: poloShirt, category: 'polo' },
-  { id: 'long-sleeve', name: 'Long Sleeve T-Shirt', image: longSleeve, category: 't-shirt' }
+  { id: 'flat-tshirt', name: 'Flat Lay T-Shirt', image: flatLayTshirt, category: 't-shirt', aspectRatio: 1.0 },
+  { id: 'hanging-tshirt', name: 'Hanging T-Shirt', image: hangingTshirt, category: 't-shirt', aspectRatio: 0.8 },
+  { id: 'front-back-tshirt', name: 'Front & Back T-Shirt', image: frontBackTshirt, category: 't-shirt', aspectRatio: 1.6 },
+  { id: 'model-tshirt', name: 'Model Wearing T-Shirt', image: modelWearingTshirt, category: 't-shirt', aspectRatio: 0.75 },
+  { id: 'hoodie-flat', name: 'Flat Lay Hoodie', image: hoodieFlat, category: 'hoodie', aspectRatio: 1.0 },
+  { id: 'tank-top', name: 'Tank Top', image: tankTop, category: 'tank-top', aspectRatio: 0.9 },
+  { id: 'polo-shirt', name: 'Polo Shirt', image: poloShirt, category: 'polo', aspectRatio: 0.85 },
+  { id: 'long-sleeve', name: 'Long Sleeve T-Shirt', image: longSleeve, category: 't-shirt', aspectRatio: 0.9 }
 ]
 
 const productCategories = [
@@ -93,9 +93,43 @@ function App() {
   const [resizeStartPos, setResizeStartPos] = useState({ x: 0, y: 0 })
   const [resizeStartSize, setResizeStartSize] = useState(0)
 
+  // Image dimensions state for aspect ratio calculation
+  const [imageDimensions, setImageDimensions] = useState({})
+
   // Function to calculate size in centimeters
   const calculateSizeInCm = useCallback((sizePercent) => {
     return ((sizePercent / 100) * CANVAS_SIZE_CM).toFixed(1)
+  }, [])
+
+  // Function to calculate width and height based on aspect ratio
+  const calculateDimensions = useCallback((layer) => {
+    const widthCm = calculateSizeInCm(layer.size)
+    
+    if (layer.type === 'image' || layer.type === 'freepik-vector') {
+      const dimensions = imageDimensions[layer.id]
+      if (dimensions) {
+        const aspectRatio = dimensions.width / dimensions.height
+        const heightCm = (parseFloat(widthCm) / aspectRatio).toFixed(1)
+        return { width: widthCm, height: heightCm }
+      }
+    }
+    
+    // For shapes and text, assume square/equal dimensions
+    return { width: widthCm, height: widthCm }
+  }, [calculateSizeInCm, imageDimensions])
+
+  // Function to load image dimensions
+  const loadImageDimensions = useCallback((layer) => {
+    if (layer.type === 'image' || layer.type === 'freepik-vector') {
+      const img = new Image()
+      img.onload = () => {
+        setImageDimensions(prev => ({
+          ...prev,
+          [layer.id]: { width: img.naturalWidth, height: img.naturalHeight }
+        }))
+      }
+      img.src = layer.src
+    }
   }, [])
 
   const handleFileUpload = useCallback((event) => {
@@ -120,11 +154,12 @@ function App() {
         setDesignLayers(prev => [...prev, newLayer])
         setSelectedLayer(newLayer.id)
         setUploadedDesign(e.target.result)
+        loadImageDimensions(newLayer)
         saveToHistory()
       }
       reader.readAsDataURL(file)
     }
-  }, [])
+  }, [loadImageDimensions])
 
   const handleFreepikVector = useCallback((vectorData) => {
     const newLayer = {
@@ -145,8 +180,9 @@ function App() {
     }
     setDesignLayers(prev => [...prev, newLayer])
     setSelectedLayer(newLayer.id)
+    loadImageDimensions(newLayer)
     saveToHistory()
-  }, [])
+  }, [loadImageDimensions])
 
   const handleTemplateSelect = useCallback((template) => {
     setSelectedTemplate(template)
@@ -226,6 +262,12 @@ function App() {
     if (selectedLayer === layerId) {
       setSelectedLayer(null)
     }
+    // Remove image dimensions for deleted layer
+    setImageDimensions(prev => {
+      const newDimensions = { ...prev }
+      delete newDimensions[layerId]
+      return newDimensions
+    })
     saveToHistory()
   }, [selectedLayer])
 
@@ -243,9 +285,10 @@ function App() {
       }
       setDesignLayers(prev => [...prev, newLayer])
       setSelectedLayer(newLayer.id)
+      loadImageDimensions(newLayer)
       saveToHistory()
     }
-  }, [designLayers])
+  }, [designLayers, loadImageDimensions])
 
   const updateSelectedLayer = useCallback((updates) => {
     if (!selectedLayer) return
@@ -426,11 +469,24 @@ function App() {
     }
   }, [isDragging, isResizing, handleCanvasMouseMove, handleCanvasMouseUp]);
 
+  // Load image dimensions for existing layers
+  useEffect(() => {
+    designLayers.forEach(layer => {
+      if ((layer.type === 'image' || layer.type === 'freepik-vector') && !imageDimensions[layer.id]) {
+        loadImageDimensions(layer)
+      }
+    })
+  }, [designLayers, imageDimensions, loadImageDimensions])
+
   const filteredTemplates = mockupTemplates.filter(template =>
     selectedCategory === 'all' || template.category === selectedCategory
   )
 
   const selectedLayerData = designLayers.find(layer => layer.id === selectedLayer)
+
+  // Calculate canvas dimensions based on selected template
+  const canvasWidth = 500
+  const canvasHeight = Math.round(canvasWidth / selectedTemplate.aspectRatio)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -794,8 +850,8 @@ function App() {
             ref={canvasRef}
             className="relative bg-white shadow-lg border border-gray-200"
             style={{
-              width: '500px',
-              height: '500px',
+              width: `${canvasWidth}px`,
+              height: `${canvasHeight}px`,
               transform: `scale(${canvasZoom / 100})`,
               transformOrigin: 'center center'
             }}
@@ -908,16 +964,24 @@ function App() {
                   />
                 </div>
                 
-                {/* Size display in centimeters */}
+                {/* Size display in centimeters with width and height */}
                 {(selectedLayerData.type === 'image' || selectedLayerData.type === 'freepik-vector' || selectedLayerData.type === 'shape') && (
                   <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                    <label className="block text-xs font-medium mb-1 text-blue-800">Size on T-Shirt</label>
-                    <div className="text-lg font-bold text-blue-900">
-                      {calculateSizeInCm(selectedLayerData.size)} cm
+                    <label className="block text-xs font-medium mb-2 text-blue-800">Size on T-Shirt</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-blue-900">
+                          {calculateDimensions(selectedLayerData).width} cm
+                        </div>
+                        <p className="text-xs text-blue-600">Width</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-blue-900">
+                          {calculateDimensions(selectedLayerData).height} cm
+                        </div>
+                        <p className="text-xs text-blue-600">Height</p>
+                      </div>
                     </div>
-                    <p className="text-xs text-blue-600 mt-1">
-                      Width: {calculateSizeInCm(selectedLayerData.size)} cm
-                    </p>
                   </div>
                 )}
                 
