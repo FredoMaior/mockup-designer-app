@@ -67,7 +67,7 @@ function App() {
   const [canvasZoom, setCanvasZoom] = useState(100)
   const [showGrid, setShowGrid] = useState(false)
   const [activeTab, setActiveTab] = useState('upload')
-  const [activeTool, setActiveTool] = useState('select')
+  const [activeTool, setActiveTool] = useState('select') // Always set to 'select' by default
   const [freepikApiKey, setFreepikApiKey] = useState('')
   const [history, setHistory] = useState([])
   const [historyIndex, setHistoryIndex] = useState(-1)
@@ -77,7 +77,6 @@ function App() {
 
   // Advanced state for Lumise-like features
   const [textEditMode, setTextEditMode] = useState(false)
-  const [colorPickerOpen, setColorPickerOpen] = useState(false)
   const [selectedColor, setSelectedColor] = useState('#000000')
 
   // Drag and drop state
@@ -310,7 +309,7 @@ function App() {
     e.stopPropagation();
     
     const layer = designLayers.find(l => l.id === layerId);
-    if (!layer || layer.locked || activeTool !== 'select') return;
+    if (!layer || layer.locked) return; // Always allow dragging since activeTool is always 'select'
 
     setSelectedLayer(layerId);
     setIsDragging(true);
@@ -321,7 +320,7 @@ function App() {
       x: e.clientX,
       y: e.clientY
     });
-  }, [designLayers, activeTool]);
+  }, [designLayers]);
 
   const handleCanvasMouseMove = useCallback((e) => {
     if (!isDragging || !dragLayerId || !canvasRef.current) return;
@@ -439,55 +438,8 @@ function App() {
         {/* Left Sidebar - Tools & Assets */}
         <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
 
-          {/* Tool Selection */}
+          {/* Tabs for different tools - removed the tool selection menu */}
           <div className="p-4 border-b border-gray-200">
-            <div className="grid grid-cols-4 gap-2 mb-4">
-              <Button
-                variant={activeTool === 'select' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveTool('select')}
-                className="p-2"
-              >
-                <MousePointer className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={activeTool === 'move' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveTool('move')}
-                className="p-2"
-              >
-                <Hand className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={activeTool === 'crop' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveTool('crop')}
-                className="p-2"
-              >
-                <Crop className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={colorPickerOpen ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setColorPickerOpen(!colorPickerOpen)}
-                className="p-2"
-              >
-                <Palette className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {colorPickerOpen && (
-              <div className="mb-4 p-3 border border-gray-200 rounded-lg">
-                <label className="block text-xs font-medium mb-2">Color Picker</label>
-                <input
-                  type="color"
-                  value={selectedColor}
-                  onChange={(e) => setSelectedColor(e.target.value)}
-                  className="w-full h-8 border border-gray-300 rounded"
-                />
-              </div>
-            )}
-
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="upload" className="text-xs">
@@ -797,7 +749,7 @@ function App() {
             {designLayers.map(layer => (
               <div
                 key={layer.id}
-                className={`absolute select-none ${activeTool === 'select' && !layer.locked ? 'cursor-move' : 'cursor-default'} ${selectedLayer === layer.id && !layer.locked ? 'border-2 border-blue-500 border-dashed' : ''}`}
+                className={`absolute select-none cursor-move ${selectedLayer === layer.id && !layer.locked ? 'border-2 border-blue-500 border-dashed' : ''}`}
                 style={{
                   left: `${layer.position.x}%`,
                   top: `${layer.position.y}%`,
