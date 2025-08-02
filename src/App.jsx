@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { Button } from '@/components/ui/button.jsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.jsx'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx'
@@ -72,12 +72,18 @@ function App() {
   const [history, setHistory] = useState([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const fileInputRef = useRef(null)
-  const savedDesignId = useRef(null) // To store the ID of the saved design
+  const savedDesignId = useRef(null)
+  const canvasRef = useRef(null)
 
   // Advanced state for Lumise-like features
   const [textEditMode, setTextEditMode] = useState(false)
   const [colorPickerOpen, setColorPickerOpen] = useState(false)
   const [selectedColor, setSelectedColor] = useState('#000000')
+
+  // Drag and drop state
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 })
+  const [dragLayerId, setDragLayerId] = useState(null)
 
   const handleFileUpload = useCallback((event) => {
     const file = event.target.files[0]
@@ -263,22 +269,18 @@ function App() {
   }, [])
 
   const handleSaveDesign = useCallback(() => {
-    // In a real application, this would send the designLayers data to your backend
-    // and receive a unique design ID. For this example, we'll simulate it.
     const designData = JSON.stringify(designLayers);
     console.log('Design saved:', designData);
 
-    // Simulate sending data to Wix Studio via postMessage
-    // In a real scenario, you'd send the actual design data or a reference to it
     const newDesignId = `design_${Date.now()}`;
-    savedDesignId.current = newDesignId; // Store the design ID
+    savedDesignId.current = newDesignId;
 
     if (window.parent) {
       window.parent.postMessage({
         type: 'designSaved',
         payload: {
           designId: newDesignId,
-          designData: designData // In a real app, you might send a URL to the saved design
+          designData: designData
         }
       }, '*');
     }
@@ -291,18 +293,81 @@ function App() {
       return;
     }
 
-    // Simulate sending data to Wix Studio via postMessage for adding to cart
     if (window.parent) {
       window.parent.postMessage({
         type: 'addToCart',
         payload: {
           designId: savedDesignId.current,
-          // You might also send a preview image or other relevant data
         }
       }, '*');
     }
     alert('Adding design to cart via Wix Studio...');
   }, []);
+
+  // Improved drag and drop handlers
+  const handleLayerMouseDown = useCallback((e, layerId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const layer = designLayers.find(l => l.id === layerId);
+    if (!layer || layer.locked || activeTool !== 'select') return;
+
+    setSelectedLayer(layerId);
+    setIsDragging(true);
+    setDragLayerId(layerId);
+    
+    // Store initial mouse position
+    setDragStartPos({
+      x: e.clientX,
+      y: e.clientY
+    });
+  }, [designLayers, activeTool]);
+
+  const handleCanvasMouseMove = useCallback((e) => {
+    if (!isDragging || !dragLayerId || !canvasRef.current) return;
+
+    e.preventDefault();
+    
+    const canvas = canvasRef.current;
+    const canvasRect = canvas.getBoundingClientRect();
+    
+    // Calculate mouse position relative to canvas
+    const mouseX = e.clientX - canvasRect.left;
+    const mouseY = e.clientY - canvasRect.top;
+    
+    // Convert to percentage
+    const newX = Math.max(0, Math.min(100, (mouseX / canvasRect.width) * 100));
+    const newY = Math.max(0, Math.min(100, (mouseY / canvasRect.height) * 100));
+    
+    // Update layer position
+    setDesignLayers(prev => prev.map(layer =>
+      layer.id === dragLayerId 
+        ? { ...layer, position: { x: newX, y: newY } }
+        : layer
+    ));
+  }, [isDragging, dragLayerId]);
+
+  const handleCanvasMouseUp = useCallback(() => {
+    if (isDragging) {
+      setIsDragging(false);
+      setDragLayerId(null);
+      setDragStartPos({ x: 0, y: 0 });
+      saveToHistory();
+    }
+  }, [isDragging, saveToHistory]);
+
+  // Add event listeners for mouse events
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleCanvasMouseMove);
+      document.addEventListener('mouseup', handleCanvasMouseUp);
+      
+      return () => {
+        document.removeEventListener('mousemove', handleCanvasMouseMove);
+        document.removeEventListener('mouseup', handleCanvasMouseUp);
+      };
+    }
+  }, [isDragging, handleCanvasMouseMove, handleCanvasMouseUp]);
 
   const filteredTemplates = mockupTemplates.filter(template =>
     selectedCategory === 'all' || template.category === selectedCategory
@@ -343,7 +408,7 @@ function App() {
                 onClick={handleAddToCart}
                 className="bg-green-500 hover:bg-green-600 text-white"
               >
-                <Save className="h-4 w-4 mr-2" /> {/* Using Save icon for now, can be changed */}
+                <Save className="h-4 w-4 mr-2" />
                 Dodaj do Koszyka
               </Button>
               <Button
@@ -716,6 +781,7 @@ function App() {
         {/* Main Canvas */}
         <div className="flex-grow flex items-center justify-center bg-gray-100 relative overflow-hidden">
           <div
+            ref={canvasRef}
             className="relative bg-white shadow-lg border border-gray-200"
             style={{
               width: '500px',
@@ -731,31 +797,46 @@ function App() {
             {designLayers.map(layer => (
               <div
                 key={layer.id}
-                className={`absolute cursor-grab ${selectedLayer === layer.id && !layer.locked ? 'border-2 border-blue-500' : ''}`}
+                className={`absolute select-none ${activeTool === 'select' && !layer.locked ? 'cursor-move' : 'cursor-default'} ${selectedLayer === layer.id && !layer.locked ? 'border-2 border-blue-500 border-dashed' : ''}`}
                 style={{
                   left: `${layer.position.x}%`,
                   top: `${layer.position.y}%`,
                   width: `${layer.size}%`,
-                  height: `${layer.size * (layer.type === 'text' ? 0.5 : 1)}%`, // Adjust height for text layers
+                  height: `${layer.size * (layer.type === 'text' ? 0.5 : 1)}%`,
                   transform: `translate(-50%, -50%) rotate(${layer.rotation}deg) scaleX(${layer.flipX ? -1 : 1}) scaleY(${layer.flipY ? -1 : 1})`,
                   opacity: layer.opacity / 100,
                   zIndex: layer.id,
-                  display: layer.visible ? 'block' : 'none'
+                  display: layer.visible ? 'block' : 'none',
+                  pointerEvents: layer.locked ? 'none' : 'auto'
                 }}
-                onClick={(e) => { e.stopPropagation(); setSelectedLayer(layer.id); }}
+                onMouseDown={(e) => handleLayerMouseDown(e, layer.id)}
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setSelectedLayer(layer.id); 
+                }}
               >
                 {layer.type === 'image' && (
-                  <img src={layer.src} alt={layer.name} className="w-full h-full object-contain" />
+                  <img 
+                    src={layer.src} 
+                    alt={layer.name} 
+                    className="w-full h-full object-contain pointer-events-none" 
+                    draggable={false}
+                  />
                 )}
                 {layer.type === 'freepik-vector' && (
-                  <img src={layer.src} alt={layer.name} className="w-full h-full object-contain" />
+                  <img 
+                    src={layer.src} 
+                    alt={layer.name} 
+                    className="w-full h-full object-contain pointer-events-none" 
+                    draggable={false}
+                  />
                 )}
                 {layer.type === 'text' && (
                   <div
-                    className="w-full h-full flex items-center justify-center"
+                    className="w-full h-full flex items-center justify-center pointer-events-none"
                     style={{
                       fontFamily: layer.fontFamily,
-                      fontSize: `${layer.size * 0.8}px`, // Adjust font size based on layer size
+                      fontSize: `${layer.size * 0.8}px`,
                       fontWeight: layer.fontWeight,
                       color: layer.color,
                       textAlign: layer.textAlign,
@@ -763,7 +844,7 @@ function App() {
                       lineHeight: layer.lineHeight,
                       textDecoration: layer.textDecoration,
                       textTransform: layer.textTransform,
-                      whiteSpace: 'pre-wrap', // Preserve line breaks
+                      whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word'
                     }}
                   >
@@ -772,7 +853,7 @@ function App() {
                 )}
                 {layer.type === 'shape' && (
                   <div
-                    className="w-full h-full"
+                    className="w-full h-full pointer-events-none"
                     style={{
                       backgroundColor: layer.fillColor,
                       border: `${layer.strokeWidth}px solid ${layer.strokeColor}`,
@@ -800,26 +881,6 @@ function App() {
                     value={selectedLayerData.name}
                     onChange={(e) => updateSelectedLayer({ name: e.target.value })}
                     className="w-full text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1">Position X (%)</label>
-                  <Input
-                    type="number"
-                    value={selectedLayerData.position.x}
-                    onChange={(e) => updateSelectedLayer({ position: { ...selectedLayerData.position, x: parseFloat(e.target.value) } })}
-                    className="w-full text-sm"
-                    step="0.1"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1">Position Y (%)</label>
-                  <Input
-                    type="number"
-                    value={selectedLayerData.position.y}
-                    onChange={(e) => updateSelectedLayer({ position: { ...selectedLayerData.position, y: parseFloat(e.target.value) } })}
-                    className="w-full text-sm"
-                    step="0.1"
                   />
                 </div>
                 <div>
@@ -892,3 +953,4 @@ function App() {
 }
 
 export default App
+
