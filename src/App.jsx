@@ -13,7 +13,8 @@ import {
   Settings, Save, Undo, Redo, Grid, AlignCenter, Search,
   Paintbrush, Droplet, Minus, Plus, MoreHorizontal,
   FlipHorizontal, FlipVertical, RotateCcw, Maximize,
-  MousePointer, Hand, Crop, Filter, Sliders, Maximize2
+  MousePointer, Hand, Crop, Filter, Sliders, Maximize2,
+  AlertTriangle
 } from 'lucide-react'
 import './App.css'
 
@@ -28,14 +29,70 @@ import poloShirt from './assets/mockup_templates/polo_shirt_mockup.png'
 import longSleeve from './assets/mockup_templates/long_sleeve_mockup.png'
 
 const mockupTemplates = [
-  { id: 'flat-tshirt', name: 'Flat Lay T-Shirt', image: flatLayTshirt, category: 't-shirt', aspectRatio: 1.0 },
-  { id: 'hanging-tshirt', name: 'Hanging T-Shirt', image: hangingTshirt, category: 't-shirt', aspectRatio: 0.8 },
-  { id: 'front-back-tshirt', name: 'Front & Back T-Shirt', image: frontBackTshirt, category: 't-shirt', aspectRatio: 1.6 },
-  { id: 'model-tshirt', name: 'Model Wearing T-Shirt', image: modelWearingTshirt, category: 't-shirt', aspectRatio: 0.75 },
-  { id: 'hoodie-flat', name: 'Flat Lay Hoodie', image: hoodieFlat, category: 'hoodie', aspectRatio: 1.0 },
-  { id: 'tank-top', name: 'Tank Top', image: tankTop, category: 'tank-top', aspectRatio: 0.9 },
-  { id: 'polo-shirt', name: 'Polo Shirt', image: poloShirt, category: 'polo', aspectRatio: 0.85 },
-  { id: 'long-sleeve', name: 'Long Sleeve T-Shirt', image: longSleeve, category: 't-shirt', aspectRatio: 0.9 }
+  { 
+    id: 'flat-tshirt', 
+    name: 'Flat Lay T-Shirt', 
+    image: flatLayTshirt, 
+    category: 't-shirt', 
+    aspectRatio: 1.0,
+    printableArea: { x: 25, y: 30, width: 50, height: 40 } // Printable area as percentage of canvas
+  },
+  { 
+    id: 'hanging-tshirt', 
+    name: 'Hanging T-Shirt', 
+    image: hangingTshirt, 
+    category: 't-shirt', 
+    aspectRatio: 0.8,
+    printableArea: { x: 30, y: 25, width: 40, height: 50 }
+  },
+  { 
+    id: 'front-back-tshirt', 
+    name: 'Front & Back T-Shirt', 
+    image: frontBackTshirt, 
+    category: 't-shirt', 
+    aspectRatio: 1.6,
+    printableArea: { x: 15, y: 30, width: 30, height: 40 }
+  },
+  { 
+    id: 'model-tshirt', 
+    name: 'Model Wearing T-Shirt', 
+    image: modelWearingTshirt, 
+    category: 't-shirt', 
+    aspectRatio: 0.75,
+    printableArea: { x: 35, y: 35, width: 30, height: 30 }
+  },
+  { 
+    id: 'hoodie-flat', 
+    name: 'Flat Lay Hoodie', 
+    image: hoodieFlat, 
+    category: 'hoodie', 
+    aspectRatio: 1.0,
+    printableArea: { x: 25, y: 35, width: 50, height: 30 }
+  },
+  { 
+    id: 'tank-top', 
+    name: 'Tank Top', 
+    image: tankTop, 
+    category: 'tank-top', 
+    aspectRatio: 0.9,
+    printableArea: { x: 30, y: 30, width: 40, height: 40 }
+  },
+  { 
+    id: 'polo-shirt', 
+    name: 'Polo Shirt', 
+    image: poloShirt, 
+    category: 'polo', 
+    aspectRatio: 0.85,
+    printableArea: { x: 30, y: 35, width: 40, height: 30 }
+  },
+  { 
+    id: 'long-sleeve', 
+    name: 'Long Sleeve T-Shirt', 
+    image: longSleeve, 
+    category: 't-shirt', 
+    aspectRatio: 0.9,
+    printableArea: { x: 30, y: 30, width: 40, height: 40 }
+  }
 ]
 
 const productCategories = [
@@ -96,6 +153,38 @@ function App() {
 
   // Image dimensions state for aspect ratio calculation
   const [imageDimensions, setImageDimensions] = useState({})
+
+  // Printable area warning state
+  const [showPrintableArea, setShowPrintableArea] = useState(true)
+  const [outOfBoundsLayers, setOutOfBoundsLayers] = useState([])
+
+  // Function to check if a layer is within printable area
+  const isLayerInPrintableArea = useCallback((layer) => {
+    const printableArea = selectedTemplate.printableArea
+    
+    // Calculate layer bounds
+    const layerLeft = layer.position.x - (layer.size / 2)
+    const layerRight = layer.position.x + (layer.size / 2)
+    const layerTop = layer.position.y - (layer.size / 2)
+    const layerBottom = layer.position.y + (layer.size / 2)
+    
+    // Check if layer is completely within printable area
+    const withinBounds = 
+      layerLeft >= printableArea.x &&
+      layerRight <= printableArea.x + printableArea.width &&
+      layerTop >= printableArea.y &&
+      layerBottom <= printableArea.y + printableArea.height
+    
+    return withinBounds
+  }, [selectedTemplate.printableArea])
+
+  // Function to check all layers and update out of bounds list
+  const checkLayerBounds = useCallback(() => {
+    const outOfBounds = designLayers.filter(layer => 
+      layer.visible && !isLayerInPrintableArea(layer)
+    )
+    setOutOfBoundsLayers(outOfBounds)
+  }, [designLayers, isLayerInPrintableArea])
 
   // Function to calculate size in centimeters based on T-shirt dimensions
   const calculateSizeInCm = useCallback((sizePercent, dimensionType) => {
@@ -518,6 +607,11 @@ function App() {
     })
   }, [designLayers, imageDimensions, loadImageDimensions])
 
+  // Check layer bounds whenever layers change
+  useEffect(() => {
+    checkLayerBounds()
+  }, [designLayers, selectedTemplate, checkLayerBounds])
+
   const filteredTemplates = mockupTemplates.filter(template =>
     selectedCategory === 'all' || template.category === selectedCategory
   )
@@ -551,6 +645,14 @@ function App() {
                 className="w-48 text-xs"
                 type="password"
               />
+              <Button 
+                variant={showPrintableArea ? "default" : "outline"} 
+                size="sm" 
+                onClick={() => setShowPrintableArea(!showPrintableArea)}
+              >
+                <Grid className="h-4 w-4 mr-2" />
+                Print Area
+              </Button>
               <Button variant="outline" size="sm" onClick={handleSaveDesign}>
                 <Save className="h-4 w-4 mr-2" />
                 Save Design
@@ -586,6 +688,25 @@ function App() {
           </div>
         </div>
       </header>
+
+      {/* Out of bounds warning */}
+      {outOfBoundsLayers.length > 0 && (
+        <div className="bg-red-50 border-l-4 border-red-400 p-4 mx-6 mt-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <AlertTriangle className="h-5 w-5 text-red-400" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-red-700">
+                <strong>Warning:</strong> {outOfBoundsLayers.length} element(s) are outside the printable area and may not appear on the final product.
+              </p>
+              <p className="text-xs text-red-600 mt-1">
+                Elements outside the print area: {outOfBoundsLayers.map(layer => layer.name).join(', ')}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex h-[calc(100vh-80px)]">
 
@@ -863,10 +984,15 @@ function App() {
               {designLayers.map(layer => (
                 <div
                   key={layer.id}
-                  className={`flex items-center justify-between p-2 border rounded-md ${selectedLayer === layer.id ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200'}`}
+                  className={`flex items-center justify-between p-2 border rounded-md ${selectedLayer === layer.id ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200'} ${!isLayerInPrintableArea(layer) && layer.visible ? 'border-red-300 bg-red-50' : ''}`}
                   onClick={() => setSelectedLayer(layer.id)}
                 >
-                  <span className="text-sm font-medium truncate">{layer.name}</span>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium truncate">{layer.name}</span>
+                    {!isLayerInPrintableArea(layer) && layer.visible && (
+                      <AlertTriangle className="h-4 w-4 text-red-500" />
+                    )}
+                  </div>
                   <div className="flex items-center space-x-1">
                     <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); toggleLayerVisibility(layer.id); }}>
                       {layer.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
@@ -897,13 +1023,32 @@ function App() {
             }}
           >
             <img src={selectedTemplate.image} alt="Mockup" className="w-full h-full object-contain" />
+            
+            {/* Printable area overlay */}
+            {showPrintableArea && (
+              <div
+                className="absolute border-2 border-dashed border-blue-400 bg-blue-100 bg-opacity-20 pointer-events-none"
+                style={{
+                  left: `${selectedTemplate.printableArea.x}%`,
+                  top: `${selectedTemplate.printableArea.y}%`,
+                  width: `${selectedTemplate.printableArea.width}%`,
+                  height: `${selectedTemplate.printableArea.height}%`,
+                  zIndex: 1
+                }}
+              >
+                <div className="absolute top-1 left-1 bg-blue-500 text-white text-xs px-1 py-0.5 rounded">
+                  Print Area
+                </div>
+              </div>
+            )}
+            
             {showGrid && (
               <div className="absolute inset-0 grid grid-cols-10 grid-rows-10 opacity-20" style={{ backgroundImage: 'linear-gradient(to right, #ccc 1px, transparent 1px), linear-gradient(to bottom, #ccc 1px, transparent 1px)' }}></div>
             )}
             {designLayers.map(layer => (
               <div
                 key={layer.id}
-                className={`absolute select-none cursor-move ${selectedLayer === layer.id && !layer.locked ? 'border-2 border-blue-500 border-dashed' : ''}`}
+                className={`absolute select-none cursor-move ${selectedLayer === layer.id && !layer.locked ? 'border-2 border-blue-500 border-dashed' : ''} ${!isLayerInPrintableArea(layer) && layer.visible ? 'border-2 border-red-500 border-dashed' : ''}`}
                 style={{
                   left: `${layer.position.x}%`,
                   top: `${layer.position.y}%`,
@@ -1003,6 +1148,19 @@ function App() {
                     className="w-full text-sm"
                   />
                 </div>
+                
+                {/* Warning if layer is out of bounds */}
+                {!isLayerInPrintableArea(selectedLayerData) && selectedLayerData.visible && (
+                  <div className="bg-red-50 p-3 rounded-lg border border-red-200">
+                    <div className="flex items-center">
+                      <AlertTriangle className="h-4 w-4 text-red-500 mr-2" />
+                      <p className="text-xs text-red-700 font-medium">Outside Print Area</p>
+                    </div>
+                    <p className="text-xs text-red-600 mt-1">
+                      This element is outside the printable area and may not appear on the final product.
+                    </p>
+                  </div>
+                )}
                 
                 {/* Size display in centimeters with width and height - now includes text */}
                 {(selectedLayerData.type === 'image' || selectedLayerData.type === 'freepik-vector' || selectedLayerData.type === 'shape' || selectedLayerData.type === 'text') && (
