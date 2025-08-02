@@ -33,65 +33,65 @@ const mockupTemplates = [
     id: 'flat-tshirt', 
     name: 'Flat Lay T-Shirt', 
     image: flatLayTshirt, 
-    category: 't-shirt', 
+    category: 't-shirt',
     aspectRatio: 1.0,
-    printableArea: { x: 25, y: 30, width: 50, height: 40 } // Printable area as percentage of canvas
+    printableArea: { x: 25, y: 20, width: 50, height: 52 } // Zwiększone o 30% (40% -> 52%)
   },
   { 
     id: 'hanging-tshirt', 
     name: 'Hanging T-Shirt', 
     image: hangingTshirt, 
-    category: 't-shirt', 
+    category: 't-shirt',
     aspectRatio: 0.8,
-    printableArea: { x: 30, y: 25, width: 40, height: 50 }
+    printableArea: { x: 30, y: 25, width: 40, height: 65 } // Zwiększone o 30% (50% -> 65%)
   },
   { 
     id: 'front-back-tshirt', 
     name: 'Front & Back T-Shirt', 
     image: frontBackTshirt, 
-    category: 't-shirt', 
+    category: 't-shirt',
     aspectRatio: 1.6,
-    printableArea: { x: 15, y: 30, width: 30, height: 40 }
+    printableArea: { x: 25, y: 30, width: 50, height: 52 } // Zwiększone o 30% (40% -> 52%)
   },
   { 
     id: 'model-tshirt', 
     name: 'Model Wearing T-Shirt', 
     image: modelWearingTshirt, 
-    category: 't-shirt', 
+    category: 't-shirt',
     aspectRatio: 0.75,
-    printableArea: { x: 35, y: 35, width: 30, height: 30 }
+    printableArea: { x: 35, y: 35, width: 30, height: 39 } // Zwiększone o 30% (30% -> 39%)
   },
   { 
     id: 'hoodie-flat', 
     name: 'Flat Lay Hoodie', 
     image: hoodieFlat, 
-    category: 'hoodie', 
+    category: 'hoodie',
     aspectRatio: 1.0,
-    printableArea: { x: 25, y: 35, width: 50, height: 30 }
+    printableArea: { x: 25, y: 20, width: 50, height: 52 } // Zwiększone o 30%
   },
   { 
     id: 'tank-top', 
     name: 'Tank Top', 
     image: tankTop, 
-    category: 'tank-top', 
-    aspectRatio: 0.9,
-    printableArea: { x: 30, y: 30, width: 40, height: 40 }
+    category: 'tank-top',
+    aspectRatio: 0.8,
+    printableArea: { x: 30, y: 25, width: 40, height: 65 } // Zwiększone o 30%
   },
   { 
     id: 'polo-shirt', 
     name: 'Polo Shirt', 
     image: poloShirt, 
-    category: 'polo', 
-    aspectRatio: 0.85,
-    printableArea: { x: 30, y: 35, width: 40, height: 30 }
+    category: 'polo',
+    aspectRatio: 0.8,
+    printableArea: { x: 30, y: 25, width: 40, height: 65 } // Zwiększone o 30%
   },
   { 
     id: 'long-sleeve', 
     name: 'Long Sleeve T-Shirt', 
     image: longSleeve, 
-    category: 't-shirt', 
-    aspectRatio: 0.9,
-    printableArea: { x: 30, y: 30, width: 40, height: 40 }
+    category: 't-shirt',
+    aspectRatio: 1.0,
+    printableArea: { x: 25, y: 20, width: 50, height: 52 } // Zwiększone o 30%
   }
 ]
 
@@ -115,7 +115,7 @@ const fontWeights = [
   { value: '900', label: 'Black' }
 ]
 
-// Constants for actual t-shirt dimensions in cm
+// Constants for size calculation - updated to real t-shirt dimensions
 const TSHIRT_WIDTH_CM = 45
 const TSHIRT_HEIGHT_CM = 55
 
@@ -127,11 +127,13 @@ function App() {
   const [selectedLayer, setSelectedLayer] = useState(null)
   const [canvasZoom, setCanvasZoom] = useState(100)
   const [showGrid, setShowGrid] = useState(false)
+  const [showPrintArea, setShowPrintArea] = useState(true)
   const [activeTab, setActiveTab] = useState('upload')
   const [activeTool, setActiveTool] = useState('select') // Always set to 'select' by default
   const [freepikApiKey, setFreepikApiKey] = useState('')
   const [history, setHistory] = useState([])
   const [historyIndex, setHistoryIndex] = useState(-1)
+  const [imageDimensions, setImageDimensions] = useState({})
   const fileInputRef = useRef(null)
   const savedDesignId = useRef(null)
   const canvasRef = useRef(null)
@@ -151,115 +153,53 @@ function App() {
   const [resizeStartPos, setResizeStartPos] = useState({ x: 0, y: 0 })
   const [resizeStartSize, setResizeStartSize] = useState(0)
 
-  // Image dimensions state for aspect ratio calculation
-  const [imageDimensions, setImageDimensions] = useState({})
+  // Function to calculate dimensions in centimeters
+  const calculateDimensions = useCallback((layer) => {
+    const widthCm = (layer.size / 100) * TSHIRT_WIDTH_CM
+    let heightCm = widthCm // Default to square
 
-  // Printable area warning state
-  const [showPrintableArea, setShowPrintableArea] = useState(true)
-  const [outOfBoundsLayers, setOutOfBoundsLayers] = useState([])
+    if (layer.type === 'image' || layer.type === 'freepik-vector') {
+      const imgDim = imageDimensions[layer.id]
+      if (imgDim) {
+        heightCm = widthCm * (imgDim.height / imgDim.width)
+      }
+    } else if (layer.type === 'text') {
+      heightCm = widthCm * layer.lineHeight * 0.6 // Approximate text height
+    }
 
-  // Function to check if a layer is within printable area
+    return {
+      width: widthCm.toFixed(1),
+      height: heightCm.toFixed(1)
+    }
+  }, [imageDimensions])
+
+  // Function to load image dimensions
+  const loadImageDimensions = useCallback((layerId, src) => {
+    const img = new Image()
+    img.onload = () => {
+      setImageDimensions(prev => ({
+        ...prev,
+        [layerId]: { width: img.width, height: img.height }
+      }))
+    }
+    img.src = src
+  }, [])
+
+  // Function to check if layer is in printable area
   const isLayerInPrintableArea = useCallback((layer) => {
-    const printableArea = selectedTemplate.printableArea
-    
-    // Calculate layer bounds
+    const printArea = selectedTemplate.printableArea
     const layerLeft = layer.position.x - (layer.size / 2)
     const layerRight = layer.position.x + (layer.size / 2)
     const layerTop = layer.position.y - (layer.size / 2)
     const layerBottom = layer.position.y + (layer.size / 2)
-    
-    // Check if layer is completely within printable area
-    const withinBounds = 
-      layerLeft >= printableArea.x &&
-      layerRight <= printableArea.x + printableArea.width &&
-      layerTop >= printableArea.y &&
-      layerBottom <= printableArea.y + printableArea.height
-    
-    return withinBounds
-  }, [selectedTemplate.printableArea])
 
-  // Function to check all layers and update out of bounds list
-  const checkLayerBounds = useCallback(() => {
-    const outOfBounds = designLayers.filter(layer => 
-      layer.visible && !isLayerInPrintableArea(layer)
+    return (
+      layerLeft >= printArea.x &&
+      layerRight <= printArea.x + printArea.width &&
+      layerTop >= printArea.y &&
+      layerBottom <= printArea.y + printArea.height
     )
-    setOutOfBoundsLayers(outOfBounds)
-  }, [designLayers, isLayerInPrintableArea])
-
-  // Function to calculate size in centimeters based on T-shirt dimensions
-  const calculateSizeInCm = useCallback((sizePercent, dimensionType) => {
-    const canvasWidth = 500; // Fixed canvas width in pixels
-    const canvasHeight = Math.round(canvasWidth / selectedTemplate.aspectRatio); // Dynamic canvas height in pixels
-
-    // Calculate the actual pixel size of the layer based on its percentage size
-    const layerPixelWidth = (sizePercent / 100) * canvasWidth;
-    
-    // Convert pixel width to cm based on TSHIRT_WIDTH_CM
-    const widthCm = (layerPixelWidth / canvasWidth) * TSHIRT_WIDTH_CM;
-
-    if (dimensionType === 'width') {
-      return widthCm.toFixed(1);
-    } else if (dimensionType === 'height') {
-      // For height, we need to consider the layer's aspect ratio
-      const layer = designLayers.find(l => l.id === resizeLayerId || l.id === dragLayerId || l.id === selectedLayer);
-      if (layer) {
-        if (layer.type === 'image' || layer.type === 'freepik-vector') {
-          const dimensions = imageDimensions[layer.id];
-          if (dimensions) {
-            const aspectRatio = dimensions.width / dimensions.height;
-            return (widthCm / aspectRatio).toFixed(1);
-          }
-        } else if (layer.type === 'text') {
-          // Approximate text height calculation: font size * line height
-          const textHeightRatio = layer.lineHeight || 1.2;
-          // This is a rough approximation, actual text height depends on content and font metrics
-          return (widthCm * textHeightRatio * 0.6).toFixed(1); 
-        } else if (layer.type === 'shape') {
-          // For shapes, assume square for simplicity or adjust based on shapeType
-          return widthCm.toFixed(1);
-        }
-      }
-      // Fallback if layer not found or type not handled
-      return widthCm.toFixed(1); // Default to square if aspect ratio unknown
-    }
-    return "0.0"; // Should not happen
-  }, [selectedTemplate.aspectRatio, designLayers, resizeLayerId, dragLayerId, selectedLayer, imageDimensions]);
-
-  // Function to calculate width and height based on aspect ratio
-  const calculateDimensions = useCallback((layer) => {
-    const widthCm = calculateSizeInCm(layer.size, 'width');
-    let heightCm = calculateSizeInCm(layer.size, 'height'); // Use the height calculation from calculateSizeInCm
-
-    // If it's an image or freepik vector, use its natural aspect ratio
-    if (layer.type === 'image' || layer.type === 'freepik-vector') {
-      const dimensions = imageDimensions[layer.id];
-      if (dimensions) {
-        const aspectRatio = dimensions.width / dimensions.height;
-        heightCm = (parseFloat(widthCm) / aspectRatio).toFixed(1);
-      }
-    } else if (layer.type === 'text') {
-      // For text, use the approximated height calculation
-      const textHeightRatio = layer.lineHeight || 1.2;
-      heightCm = (parseFloat(widthCm) * textHeightRatio * 0.6).toFixed(1); // 0.6 is an approximation factor
-    }
-    // For shapes, heightCm is already calculated as widthCm by default in calculateSizeInCm
-
-    return { width: widthCm, height: heightCm };
-  }, [calculateSizeInCm, imageDimensions]);
-
-  // Function to load image dimensions
-  const loadImageDimensions = useCallback((layer) => {
-    if (layer.type === 'image' || layer.type === 'freepik-vector') {
-      const img = new Image()
-      img.onload = () => {
-        setImageDimensions(prev => ({
-          ...prev,
-          [layer.id]: { width: img.naturalWidth, height: img.naturalHeight }
-        }))
-      }
-      img.src = layer.src
-    }
-  }, [])
+  }, [selectedTemplate])
 
   const handleFileUpload = useCallback((event) => {
     const file = event.target.files[0]
@@ -283,7 +223,7 @@ function App() {
         setDesignLayers(prev => [...prev, newLayer])
         setSelectedLayer(newLayer.id)
         setUploadedDesign(e.target.result)
-        loadImageDimensions(newLayer)
+        loadImageDimensions(newLayer.id, e.target.result)
         saveToHistory()
       }
       reader.readAsDataURL(file)
@@ -309,7 +249,7 @@ function App() {
     }
     setDesignLayers(prev => [...prev, newLayer])
     setSelectedLayer(newLayer.id)
-    loadImageDimensions(newLayer)
+    loadImageDimensions(newLayer.id, vectorData.url)
     saveToHistory()
   }, [loadImageDimensions])
 
@@ -391,7 +331,7 @@ function App() {
     if (selectedLayer === layerId) {
       setSelectedLayer(null)
     }
-    // Remove image dimensions for deleted layer
+    // Clean up image dimensions
     setImageDimensions(prev => {
       const newDimensions = { ...prev }
       delete newDimensions[layerId]
@@ -414,10 +354,16 @@ function App() {
       }
       setDesignLayers(prev => [...prev, newLayer])
       setSelectedLayer(newLayer.id)
-      loadImageDimensions(newLayer)
+      // Copy image dimensions if they exist
+      if (imageDimensions[layerId]) {
+        setImageDimensions(prev => ({
+          ...prev,
+          [newLayer.id]: imageDimensions[layerId]
+        }))
+      }
       saveToHistory()
     }
-  }, [designLayers, loadImageDimensions])
+  }, [designLayers, imageDimensions])
 
   const updateSelectedLayer = useCallback((updates) => {
     if (!selectedLayer) return
@@ -598,29 +544,11 @@ function App() {
     }
   }, [isDragging, isResizing, handleCanvasMouseMove, handleCanvasMouseUp]);
 
-  // Load image dimensions for existing layers
-  useEffect(() => {
-    designLayers.forEach(layer => {
-      if ((layer.type === 'image' || layer.type === 'freepik-vector') && !imageDimensions[layer.id]) {
-        loadImageDimensions(layer)
-      }
-    })
-  }, [designLayers, imageDimensions, loadImageDimensions])
-
-  // Check layer bounds whenever layers change
-  useEffect(() => {
-    checkLayerBounds()
-  }, [designLayers, selectedTemplate, checkLayerBounds])
-
   const filteredTemplates = mockupTemplates.filter(template =>
     selectedCategory === 'all' || template.category === selectedCategory
   )
 
   const selectedLayerData = designLayers.find(layer => layer.id === selectedLayer)
-
-  // Calculate canvas dimensions based on selected template
-  const canvasWidth = 500
-  const canvasHeight = Math.round(canvasWidth / selectedTemplate.aspectRatio)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -645,10 +573,11 @@ function App() {
                 className="w-48 text-xs"
                 type="password"
               />
-              <Button 
-                variant={showPrintableArea ? "default" : "outline"} 
-                size="sm" 
-                onClick={() => setShowPrintableArea(!showPrintableArea)}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowPrintArea(!showPrintArea)}
+                className={showPrintArea ? "bg-blue-100 text-blue-700" : ""}
               >
                 <Grid className="h-4 w-4 mr-2" />
                 Print Area
@@ -684,36 +613,18 @@ function App() {
                 <Redo className="h-4 w-4 mr-2" />
                 Redo
               </Button>
+              <Button variant="outline" size="sm" onClick={handleDownload}>
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </Button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Out of bounds warning */}
-      {outOfBoundsLayers.length > 0 && (
-        <div className="bg-red-50 border-l-4 border-red-400 p-4 mx-6 mt-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <AlertTriangle className="h-5 w-5 text-red-400" />
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-red-700">
-                <strong>Warning:</strong> {outOfBoundsLayers.length} element(s) are outside the printable area and may not appear on the final product.
-              </p>
-              <p className="text-xs text-red-600 mt-1">
-                Elements outside the print area: {outOfBoundsLayers.map(layer => layer.name).join(', ')}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="flex h-[calc(100vh-80px)]">
-
-        {/* Left Sidebar - Tools & Assets */}
+        {/* Left Sidebar - Tools */}
         <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
-
-          {/* Tabs for different tools - removed the tool selection menu */}
           <div className="p-4 border-b border-gray-200">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-5">
@@ -925,6 +836,7 @@ function App() {
                             value={selectedLayerData.strokeWidth}
                             onChange={(e) => updateSelectedLayer({ strokeWidth: parseInt(e.target.value) })}
                             className="w-full text-sm"
+                            min="0"
                           />
                         </div>
                       </div>
@@ -939,195 +851,274 @@ function App() {
                     <CardTitle className="text-sm">Product Templates</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex space-x-2 mb-4 overflow-x-auto pb-2">
-                      <Button
-                        variant={selectedCategory === 'all' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setSelectedCategory('all')}
-                      >
-                        All
-                      </Button>
-                      {productCategories.map(category => (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-2">
                         <Button
-                          key={category.id}
-                          variant={selectedCategory === category.id ? 'default' : 'outline'}
+                          variant={selectedCategory === 'all' ? 'default' : 'outline'}
                           size="sm"
-                          onClick={() => setSelectedCategory(category.id)}
+                          onClick={() => handleCategorySelect('all')}
+                          className="text-xs"
                         >
-                          {category.name}
+                          All
                         </Button>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      {filteredTemplates.map(template => (
-                        <div
-                          key={template.id}
-                          className={`border rounded-lg p-2 cursor-pointer ${selectedTemplate.id === template.id ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-200 hover:border-gray-300'}`}
-                          onClick={() => handleTemplateSelect(template)}
-                        >
-                          <img src={template.image} alt={template.name} className="w-full h-24 object-contain mb-2" />
-                          <p className="text-xs text-center font-medium">{template.name}</p>
-                        </div>
-                      ))}
+                        {productCategories.map(category => (
+                          <Button
+                            key={category.id}
+                            variant={selectedCategory === category.id ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handleCategorySelect(category.id)}
+                            className="text-xs"
+                          >
+                            <category.icon className="h-3 w-3 mr-1" />
+                            {category.name}
+                          </Button>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {filteredTemplates.map(template => (
+                          <div
+                            key={template.id}
+                            className={`cursor-pointer rounded-lg border-2 transition-colors ${
+                              selectedTemplate.id === template.id
+                                ? 'border-blue-500 bg-blue-50'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                            onClick={() => handleTemplateSelect(template)}
+                          >
+                            <img
+                              src={template.image}
+                              alt={template.name}
+                              className="w-full h-20 object-cover rounded-t-lg"
+                            />
+                            <div className="p-2">
+                              <p className="text-xs font-medium text-gray-900">{template.name}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
               </TabsContent>
-
             </Tabs>
           </div>
 
-          {/* Layer Management */}
-          <div className="p-4 flex-grow overflow-y-auto">
-            <h2 className="text-sm font-semibold mb-3">Layers</h2>
-            <div className="space-y-2">
-              {designLayers.map(layer => (
-                <div
-                  key={layer.id}
-                  className={`flex items-center justify-between p-2 border rounded-md ${selectedLayer === layer.id ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200'} ${!isLayerInPrintableArea(layer) && layer.visible ? 'border-red-300 bg-red-50' : ''}`}
-                  onClick={() => setSelectedLayer(layer.id)}
-                >
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-medium truncate">{layer.name}</span>
-                    {!isLayerInPrintableArea(layer) && layer.visible && (
-                      <AlertTriangle className="h-4 w-4 text-red-500" />
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); toggleLayerVisibility(layer.id); }}>
-                      {layer.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); toggleLayerLock(layer.id); }}>
-                      {layer.locked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); deleteLayer(layer.id); }}>
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+          {/* Layers Panel */}
+          <div className="flex-1 p-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center">
+                  <Layers className="h-4 w-4 mr-2" />
+                  Layers ({designLayers.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {designLayers.length === 0 ? (
+                  <p className="text-xs text-gray-500 text-center py-4">No layers yet. Add some content!</p>
+                ) : (
+                  designLayers.slice().reverse().map(layer => {
+                    const isOutsidePrintArea = !isLayerInPrintableArea(layer)
+                    return (
+                      <div
+                        key={layer.id}
+                        className={`flex items-center space-x-2 p-2 rounded-lg border cursor-pointer transition-colors ${
+                          selectedLayer === layer.id
+                            ? 'border-blue-500 bg-blue-50'
+                            : isOutsidePrintArea
+                            ? 'border-red-300 bg-red-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                        onClick={() => setSelectedLayer(layer.id)}
+                      >
+                        <div className="flex items-center space-x-2 flex-1">
+                          {layer.type === 'image' && <ImageIcon className="h-4 w-4 text-blue-500" />}
+                          {layer.type === 'freepik-vector' && <Zap className="h-4 w-4 text-purple-500" />}
+                          {layer.type === 'text' && <Type className="h-4 w-4 text-green-500" />}
+                          {layer.type === 'shape' && <Square className="h-4 w-4 text-orange-500" />}
+                          <span className="text-xs font-medium truncate flex-1">{layer.name}</span>
+                          {isOutsidePrintArea && (
+                            <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleLayerVisibility(layer.id)
+                            }}
+                            className="h-6 w-6 p-0"
+                          >
+                            {layer.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleLayerLock(layer.id)
+                            }}
+                            className="h-6 w-6 p-0"
+                          >
+                            {layer.locked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              duplicateLayer(layer.id)
+                            }}
+                            className="h-6 w-6 p-0"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              deleteLayer(layer.id)
+                            }}
+                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
 
-        {/* Main Canvas */}
-        <div className="flex-grow flex items-center justify-center bg-gray-100 relative overflow-hidden">
+        {/* Main Canvas Area */}
+        <div className="flex-1 flex items-center justify-center p-8 bg-gray-100">
           <div
             ref={canvasRef}
-            className="relative bg-white shadow-lg border border-gray-200"
+            className="relative bg-white rounded-lg shadow-lg overflow-hidden"
             style={{
-              width: `${canvasWidth}px`,
-              height: `${canvasHeight}px`,
-              transform: `scale(${canvasZoom / 100})`,
-              transformOrigin: 'center center'
+              width: '500px',
+              height: `${500 * selectedTemplate.aspectRatio}px`,
+              maxHeight: '600px'
             }}
+            onMouseMove={handleCanvasMouseMove}
+            onMouseUp={handleCanvasMouseUp}
           >
             <img src={selectedTemplate.image} alt="Mockup" className="w-full h-full object-contain" />
             
-            {/* Printable area overlay */}
-            {showPrintableArea && (
+            {/* Print Area Overlay */}
+            {showPrintArea && (
               <div
-                className="absolute border-2 border-dashed border-blue-400 bg-blue-100 bg-opacity-20 pointer-events-none"
+                className="absolute border-2 border-dashed border-blue-500 bg-blue-100 bg-opacity-20 pointer-events-none"
                 style={{
                   left: `${selectedTemplate.printableArea.x}%`,
                   top: `${selectedTemplate.printableArea.y}%`,
                   width: `${selectedTemplate.printableArea.width}%`,
-                  height: `${selectedTemplate.printableArea.height}%`,
-                  zIndex: 1
+                  height: `${selectedTemplate.printableArea.height}%`
                 }}
-              >
-                <div className="absolute top-1 left-1 bg-blue-500 text-white text-xs px-1 py-0.5 rounded">
-                  Print Area
-                </div>
-              </div>
+              />
             )}
             
             {showGrid && (
               <div className="absolute inset-0 grid grid-cols-10 grid-rows-10 opacity-20" style={{ backgroundImage: 'linear-gradient(to right, #ccc 1px, transparent 1px), linear-gradient(to bottom, #ccc 1px, transparent 1px)' }}></div>
             )}
-            {designLayers.map(layer => (
-              <div
-                key={layer.id}
-                className={`absolute select-none cursor-move ${selectedLayer === layer.id && !layer.locked ? 'border-2 border-blue-500 border-dashed' : ''} ${!isLayerInPrintableArea(layer) && layer.visible ? 'border-2 border-red-500 border-dashed' : ''}`}
-                style={{
-                  left: `${layer.position.x}%`,
-                  top: `${layer.position.y}%`,
-                  width: `${layer.size}%`,
-                  height: `${layer.size * (layer.type === 'text' ? 0.5 : 1)}%`,
-                  transform: `translate(-50%, -50%) rotate(${layer.rotation}deg) scaleX(${layer.flipX ? -1 : 1}) scaleY(${layer.flipY ? -1 : 1})`,
-                  opacity: layer.opacity / 100,
-                  zIndex: layer.id,
-                  display: layer.visible ? 'block' : 'none',
-                  pointerEvents: layer.locked ? 'none' : 'auto'
-                }}
-                onMouseDown={(e) => handleLayerMouseDown(e, layer.id)}
-                onClick={(e) => { 
-                  e.stopPropagation(); 
-                  setSelectedLayer(layer.id); 
-                }}
-              >
-                {layer.type === 'image' && (
-                  <img 
-                    src={layer.src} 
-                    alt={layer.name} 
-                    className="w-full h-full object-contain pointer-events-none" 
-                    draggable={false}
-                  />
-                )}
-                {layer.type === 'freepik-vector' && (
-                  <img 
-                    src={layer.src} 
-                    alt={layer.name} 
-                    className="w-full h-full object-contain pointer-events-none" 
-                    draggable={false}
-                  />
-                )}
-                {layer.type === 'text' && (
-                  <div
-                    className="w-full h-full flex items-center justify-center pointer-events-none"
-                    style={{
-                      fontFamily: layer.fontFamily,
-                      fontSize: `${layer.size * 0.8}px`,
-                      fontWeight: layer.fontWeight,
-                      color: layer.color,
-                      textAlign: layer.textAlign,
-                      letterSpacing: `${layer.letterSpacing}px`,
-                      lineHeight: layer.lineHeight,
-                      textDecoration: layer.textDecoration,
-                      textTransform: layer.textTransform,
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word'
-                    }}
-                  >
-                    {layer.content}
-                  </div>
-                )}
-                {layer.type === 'shape' && (
-                  <div
-                    className="w-full h-full pointer-events-none"
-                    style={{
-                      backgroundColor: layer.fillColor,
-                      border: `${layer.strokeWidth}px solid ${layer.strokeColor}`,
-                      borderRadius: layer.shapeType === 'circle' ? '50%' : '0'
-                    }}
-                  ></div>
-                )}
-                
-                {/* Resize handle - now also shows for text layers */}
-                {selectedLayer === layer.id && !layer.locked && (
-                  <div
-                    className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-se-resize shadow-md hover:bg-blue-600 transition-colors"
-                    style={{
-                      transform: 'translate(50%, 50%)',
-                      zIndex: 1000
-                    }}
-                    onMouseDown={(e) => handleResizeMouseDown(e, layer.id)}
-                  >
-                    <Maximize2 className="w-2 h-2 text-white absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
-                  </div>
-                )}
-              </div>
-            ))}
+            
+            {designLayers.map(layer => {
+              const isOutsidePrintArea = !isLayerInPrintableArea(layer)
+              return (
+                <div
+                  key={layer.id}
+                  className={`absolute select-none cursor-move ${
+                    selectedLayer === layer.id && !layer.locked 
+                      ? 'border-2 border-blue-500 border-dashed' 
+                      : isOutsidePrintArea 
+                      ? 'border-2 border-red-500 border-dashed' 
+                      : ''
+                  }`}
+                  style={{
+                    left: `${layer.position.x}%`,
+                    top: `${layer.position.y}%`,
+                    width: `${layer.size}%`,
+                    height: `${layer.size * (layer.type === 'text' ? 0.5 : 1)}%`,
+                    transform: `translate(-50%, -50%) rotate(${layer.rotation}deg) scaleX(${layer.flipX ? -1 : 1}) scaleY(${layer.flipY ? -1 : 1})`,
+                    opacity: layer.opacity / 100,
+                    zIndex: layer.id,
+                    display: layer.visible ? 'block' : 'none',
+                    pointerEvents: layer.locked ? 'none' : 'auto'
+                  }}
+                  onMouseDown={(e) => handleLayerMouseDown(e, layer.id)}
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    setSelectedLayer(layer.id); 
+                  }}
+                >
+                  {layer.type === 'image' && (
+                    <img 
+                      src={layer.src} 
+                      alt={layer.name} 
+                      className="w-full h-full object-contain pointer-events-none" 
+                      draggable={false}
+                    />
+                  )}
+                  {layer.type === 'freepik-vector' && (
+                    <img 
+                      src={layer.src} 
+                      alt={layer.name} 
+                      className="w-full h-full object-contain pointer-events-none" 
+                      draggable={false}
+                    />
+                  )}
+                  {layer.type === 'text' && (
+                    <div
+                      className="w-full h-full flex items-center justify-center pointer-events-none"
+                      style={{
+                        fontFamily: layer.fontFamily,
+                        fontSize: `${layer.size * 0.8}px`,
+                        fontWeight: layer.fontWeight,
+                        color: layer.color,
+                        textAlign: layer.textAlign,
+                        letterSpacing: `${layer.letterSpacing}px`,
+                        lineHeight: layer.lineHeight,
+                        textDecoration: layer.textDecoration,
+                        textTransform: layer.textTransform,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word'
+                      }}
+                    >
+                      {layer.content}
+                    </div>
+                  )}
+                  {layer.type === 'shape' && (
+                    <div
+                      className="w-full h-full pointer-events-none"
+                      style={{
+                        backgroundColor: layer.fillColor,
+                        border: `${layer.strokeWidth}px solid ${layer.strokeColor}`,
+                        borderRadius: layer.shapeType === 'circle' ? '50%' : '0'
+                      }}
+                    ></div>
+                  )}
+                  
+                  {/* Resize handle - only show for selected layer */}
+                  {selectedLayer === layer.id && !layer.locked && (
+                    <div
+                      className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-se-resize shadow-md hover:bg-blue-600 transition-colors"
+                      style={{
+                        transform: 'translate(50%, 50%)',
+                        zIndex: 1000
+                      }}
+                      onMouseDown={(e) => handleResizeMouseDown(e, layer.id)}
+                    >
+                      <Maximize2 className="w-2 h-2 text-white absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
 
@@ -1149,35 +1140,35 @@ function App() {
                   />
                 </div>
                 
-                {/* Warning if layer is out of bounds */}
-                {!isLayerInPrintableArea(selectedLayerData) && selectedLayerData.visible && (
+                {/* Warning for elements outside print area */}
+                {!isLayerInPrintableArea(selectedLayerData) && (
                   <div className="bg-red-50 p-3 rounded-lg border border-red-200">
-                    <div className="flex items-center">
-                      <AlertTriangle className="h-4 w-4 text-red-500 mr-2" />
-                      <p className="text-xs text-red-700 font-medium">Outside Print Area</p>
+                    <div className="flex items-center mb-2">
+                      <AlertTriangle className="h-4 w-4 text-red-600 mr-2" />
+                      <span className="text-sm font-medium text-red-800">Outside Print Area</span>
                     </div>
-                    <p className="text-xs text-red-600 mt-1">
-                      This element is outside the printable area and may not appear on the final product.
+                    <p className="text-xs text-red-600">
+                      This element is outside the printable area. Move it inside the blue dashed area to ensure it will be printed correctly.
                     </p>
                   </div>
                 )}
                 
-                {/* Size display in centimeters with width and height - now includes text */}
-                {(selectedLayerData.type === 'image' || selectedLayerData.type === 'freepik-vector' || selectedLayerData.type === 'shape' || selectedLayerData.type === 'text') && (
+                {/* Size display in centimeters */}
+                {selectedLayerData && (
                   <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
                     <label className="block text-xs font-medium mb-2 text-blue-800">Size on T-Shirt</label>
                     <div className="grid grid-cols-2 gap-2">
-                      <div className="text-center">
+                      <div>
+                        <span className="text-xs text-blue-600">Width</span>
                         <div className="text-lg font-bold text-blue-900">
                           {calculateDimensions(selectedLayerData).width} cm
                         </div>
-                        <p className="text-xs text-blue-600">Width</p>
                       </div>
-                      <div className="text-center">
+                      <div>
+                        <span className="text-xs text-blue-600">Height</span>
                         <div className="text-lg font-bold text-blue-900">
                           {calculateDimensions(selectedLayerData).height} cm
                         </div>
-                        <p className="text-xs text-blue-600">Height</p>
                       </div>
                     </div>
                   </div>
