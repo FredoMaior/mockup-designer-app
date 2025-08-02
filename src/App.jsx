@@ -13,7 +13,7 @@ import {
   Settings, Save, Undo, Redo, Grid, AlignCenter, Search,
   Paintbrush, Droplet, Minus, Plus, MoreHorizontal,
   FlipHorizontal, FlipVertical, RotateCcw, Maximize,
-  MousePointer, Hand, Crop, Filter, Sliders
+  MousePointer, Hand, Crop, Filter, Sliders, Maximize2
 } from 'lucide-react'
 import './App.css'
 
@@ -58,6 +58,9 @@ const fontWeights = [
   { value: '900', label: 'Black' }
 ]
 
+// Constants for size calculation
+const CANVAS_SIZE_CM = 25 // Assuming the design area on t-shirt is about 25cm wide
+
 function App() {
   const [selectedTemplate, setSelectedTemplate] = useState(mockupTemplates[0])
   const [selectedCategory, setSelectedCategory] = useState('t-shirt')
@@ -83,6 +86,17 @@ function App() {
   const [isDragging, setIsDragging] = useState(false)
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 })
   const [dragLayerId, setDragLayerId] = useState(null)
+
+  // Resize state
+  const [isResizing, setIsResizing] = useState(false)
+  const [resizeLayerId, setResizeLayerId] = useState(null)
+  const [resizeStartPos, setResizeStartPos] = useState({ x: 0, y: 0 })
+  const [resizeStartSize, setResizeStartSize] = useState(0)
+
+  // Function to calculate size in centimeters
+  const calculateSizeInCm = useCallback((sizePercent) => {
+    return ((sizePercent / 100) * CANVAS_SIZE_CM).toFixed(1)
+  }, [])
 
   const handleFileUpload = useCallback((event) => {
     const file = event.target.files[0]
@@ -309,7 +323,7 @@ function App() {
     e.stopPropagation();
     
     const layer = designLayers.find(l => l.id === layerId);
-    if (!layer || layer.locked) return; // Always allow dragging since activeTool is always 'select'
+    if (!layer || layer.locked) return;
 
     setSelectedLayer(layerId);
     setIsDragging(true);
@@ -323,28 +337,51 @@ function App() {
   }, [designLayers]);
 
   const handleCanvasMouseMove = useCallback((e) => {
-    if (!isDragging || !dragLayerId || !canvasRef.current) return;
+    if (isDragging && dragLayerId && canvasRef.current) {
+      e.preventDefault();
+      
+      const canvas = canvasRef.current;
+      const canvasRect = canvas.getBoundingClientRect();
+      
+      // Calculate mouse position relative to canvas
+      const mouseX = e.clientX - canvasRect.left;
+      const mouseY = e.clientY - canvasRect.top;
+      
+      // Convert to percentage
+      const newX = Math.max(0, Math.min(100, (mouseX / canvasRect.width) * 100));
+      const newY = Math.max(0, Math.min(100, (mouseY / canvasRect.height) * 100));
+      
+      // Update layer position
+      setDesignLayers(prev => prev.map(layer =>
+        layer.id === dragLayerId 
+          ? { ...layer, position: { x: newX, y: newY } }
+          : layer
+      ));
+    }
 
-    e.preventDefault();
-    
-    const canvas = canvasRef.current;
-    const canvasRect = canvas.getBoundingClientRect();
-    
-    // Calculate mouse position relative to canvas
-    const mouseX = e.clientX - canvasRect.left;
-    const mouseY = e.clientY - canvasRect.top;
-    
-    // Convert to percentage
-    const newX = Math.max(0, Math.min(100, (mouseX / canvasRect.width) * 100));
-    const newY = Math.max(0, Math.min(100, (mouseY / canvasRect.height) * 100));
-    
-    // Update layer position
-    setDesignLayers(prev => prev.map(layer =>
-      layer.id === dragLayerId 
-        ? { ...layer, position: { x: newX, y: newY } }
-        : layer
-    ));
-  }, [isDragging, dragLayerId]);
+    if (isResizing && resizeLayerId && canvasRef.current) {
+      e.preventDefault();
+      
+      const canvas = canvasRef.current;
+      const canvasRect = canvas.getBoundingClientRect();
+      
+      // Calculate distance from start position
+      const deltaX = e.clientX - resizeStartPos.x;
+      const deltaY = e.clientY - resizeStartPos.y;
+      const delta = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      
+      // Convert to size change (adjust sensitivity)
+      const sizeChange = (delta / canvasRect.width) * 100;
+      const newSize = Math.max(5, Math.min(100, resizeStartSize + (deltaX > 0 ? sizeChange : -sizeChange)));
+      
+      // Update layer size
+      setDesignLayers(prev => prev.map(layer =>
+        layer.id === resizeLayerId 
+          ? { ...layer, size: newSize }
+          : layer
+      ));
+    }
+  }, [isDragging, dragLayerId, isResizing, resizeLayerId, resizeStartPos, resizeStartSize]);
 
   const handleCanvasMouseUp = useCallback(() => {
     if (isDragging) {
@@ -353,11 +390,32 @@ function App() {
       setDragStartPos({ x: 0, y: 0 });
       saveToHistory();
     }
-  }, [isDragging, saveToHistory]);
+    if (isResizing) {
+      setIsResizing(false);
+      setResizeLayerId(null);
+      setResizeStartPos({ x: 0, y: 0 });
+      setResizeStartSize(0);
+      saveToHistory();
+    }
+  }, [isDragging, isResizing, saveToHistory]);
+
+  // Resize handle mouse down
+  const handleResizeMouseDown = useCallback((e, layerId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const layer = designLayers.find(l => l.id === layerId);
+    if (!layer || layer.locked) return;
+
+    setIsResizing(true);
+    setResizeLayerId(layerId);
+    setResizeStartPos({ x: e.clientX, y: e.clientY });
+    setResizeStartSize(layer.size);
+  }, [designLayers]);
 
   // Add event listeners for mouse events
   useEffect(() => {
-    if (isDragging) {
+    if (isDragging || isResizing) {
       document.addEventListener('mousemove', handleCanvasMouseMove);
       document.addEventListener('mouseup', handleCanvasMouseUp);
       
@@ -366,7 +424,7 @@ function App() {
         document.removeEventListener('mouseup', handleCanvasMouseUp);
       };
     }
-  }, [isDragging, handleCanvasMouseMove, handleCanvasMouseUp]);
+  }, [isDragging, isResizing, handleCanvasMouseMove, handleCanvasMouseUp]);
 
   const filteredTemplates = mockupTemplates.filter(template =>
     selectedCategory === 'all' || template.category === selectedCategory
@@ -813,6 +871,20 @@ function App() {
                     }}
                   ></div>
                 )}
+                
+                {/* Resize handle - only show for selected layer */}
+                {selectedLayer === layer.id && !layer.locked && (layer.type === 'image' || layer.type === 'freepik-vector' || layer.type === 'shape') && (
+                  <div
+                    className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-se-resize shadow-md hover:bg-blue-600 transition-colors"
+                    style={{
+                      transform: 'translate(50%, 50%)',
+                      zIndex: 1000
+                    }}
+                    onMouseDown={(e) => handleResizeMouseDown(e, layer.id)}
+                  >
+                    <Maximize2 className="w-2 h-2 text-white absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -835,6 +907,20 @@ function App() {
                     className="w-full text-sm"
                   />
                 </div>
+                
+                {/* Size display in centimeters */}
+                {(selectedLayerData.type === 'image' || selectedLayerData.type === 'freepik-vector' || selectedLayerData.type === 'shape') && (
+                  <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                    <label className="block text-xs font-medium mb-1 text-blue-800">Size on T-Shirt</label>
+                    <div className="text-lg font-bold text-blue-900">
+                      {calculateSizeInCm(selectedLayerData.size)} cm
+                    </div>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Width: {calculateSizeInCm(selectedLayerData.size)} cm
+                    </p>
+                  </div>
+                )}
+                
                 <div>
                   <label className="block text-xs font-medium mb-1">Size (%)</label>
                   <Input
