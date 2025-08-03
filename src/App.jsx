@@ -915,17 +915,23 @@ function App() {
                         }`}
                         onClick={() => setSelectedLayer(layer.id)}
                       >
-                        <div className="flex items-center space-x-2 flex-1">
-                          {layer.type === 'image' && <ImageIcon className="h-4 w-4 text-blue-500" />}
-                          {layer.type === 'freepik-vector' && <Zap className="h-4 w-4 text-purple-500" />}
-                          {layer.type === 'text' && <Type className="h-4 w-4 text-green-500" />}
-                          {layer.type === 'shape' && <Square className="h-4 w-4 text-orange-500" />}
-                          <span className="text-xs font-medium truncate flex-1">{layer.name}</span>
+                        <div className="flex items-center space-x-2 flex-1 min-w-0">
+                          {layer.type === 'image' && <ImageIcon className="h-4 w-4 text-blue-500 flex-shrink-0" />}
+                          {layer.type === 'freepik-vector' && <Zap className="h-4 w-4 text-purple-500 flex-shrink-0" />}
+                          {layer.type === 'text' && <Type className="h-4 w-4 text-green-500 flex-shrink-0" />}
+                          {layer.type === 'shape' && <Square className="h-4 w-4 text-orange-500 flex-shrink-0" />}
+                          <span 
+                            className="text-xs font-medium truncate" 
+                            style={{ maxWidth: '120px' }}
+                            title={layer.name}
+                          >
+                            {layer.name}
+                          </span>
                           {isOutsidePrintArea && (
                             <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />
                           )}
                         </div>
-                        <div className="flex items-center space-x-1">
+                        <div className="flex items-center space-x-1 flex-shrink-0">
                           <Button
                             variant="ghost"
                             size="sm"
