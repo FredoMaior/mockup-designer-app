@@ -185,6 +185,52 @@ function App() {
     img.src = src
   }, [])
 
+  // Function to check image quality for print
+  const checkImageQuality = useCallback((layer) => {
+    if (layer.type !== 'image' && layer.type !== 'freepik-vector') {
+      return { isGoodQuality: true, dpi: null, recommendation: null }
+    }
+
+    const imgDim = imageDimensions[layer.id]
+    if (!imgDim) {
+      return { isGoodQuality: true, dpi: null, recommendation: null }
+    }
+
+    const dimensions = calculateDimensions(layer)
+    const widthCm = parseFloat(dimensions.width)
+    const heightCm = parseFloat(dimensions.height)
+
+    // Convert cm to inches (1 inch = 2.54 cm)
+    const widthInches = widthCm / 2.54
+    const heightInches = heightCm / 2.54
+
+    // Calculate DPI (dots per inch)
+    const dpiX = imgDim.width / widthInches
+    const dpiY = imgDim.height / heightInches
+    const avgDpi = Math.min(dpiX, dpiY) // Use the lower DPI as limiting factor
+
+    // Quality thresholds
+    const minDpi = 150 // Minimum for acceptable print quality
+    const goodDpi = 300 // Recommended for high quality print
+
+    let isGoodQuality = true
+    let recommendation = null
+
+    if (avgDpi < minDpi) {
+      isGoodQuality = false
+      recommendation = "Bardzo niska jakość! Obrazek będzie rozmazany po wydruku. Użyj obrazka o wyższej rozdzielczości."
+    } else if (avgDpi < goodDpi) {
+      isGoodQuality = false
+      recommendation = "Niska jakość druku. Dla lepszego efektu użyj obrazka o wyższej rozdzielczości."
+    }
+
+    return {
+      isGoodQuality,
+      dpi: Math.round(avgDpi),
+      recommendation
+    }
+  }, [imageDimensions, calculateDimensions])
+
   // Function to check if layer is in printable area
   const isLayerInPrintableArea = useCallback((layer) => {
     const printArea = selectedTemplate.printableArea
@@ -1165,6 +1211,30 @@ function App() {
                   </div>
                 )}
                 
+                {/* Image quality warning */}
+                {selectedLayerData && (selectedLayerData.type === 'image' || selectedLayerData.type === 'freepik-vector') && (
+                  (() => {
+                    const qualityCheck = checkImageQuality(selectedLayerData)
+                    if (!qualityCheck.isGoodQuality && qualityCheck.recommendation) {
+                      return (
+                        <div className="bg-orange-50 p-3 rounded-lg border border-orange-200">
+                          <div className="flex items-center mb-2">
+                            <AlertTriangle className="h-4 w-4 text-orange-600 mr-2" />
+                            <span className="text-sm font-medium text-orange-800">Jakość Druku</span>
+                          </div>
+                          <p className="text-xs text-orange-600 mb-2">
+                            {qualityCheck.recommendation}
+                          </p>
+                          <p className="text-xs text-orange-500">
+                            Aktualne DPI: {qualityCheck.dpi} (zalecane: 300+ DPI)
+                          </p>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()
+                )}
+                
                 <div>
                   <label className="block text-xs font-medium mb-1">Size (%)</label>
                   <Input
@@ -1193,8 +1263,8 @@ function App() {
                     onClick={() => updateSelectedLayer({ flipX: !selectedLayerData.flipX })}
                     className="w-full"
                   >
-                    <FlipHorizontal className="h-4 w-4 mr-2" />
-                    Flip X
+                    <FlipHorizontal className="h-4 w-4 mr-1" />
+                    X
                   </Button>
                   <Button
                     variant="outline"
@@ -1202,8 +1272,8 @@ function App() {
                     onClick={() => updateSelectedLayer({ flipY: !selectedLayerData.flipY })}
                     className="w-full"
                   >
-                    <FlipVertical className="h-4 w-4 mr-2" />
-                    Flip Y
+                    <FlipVertical className="h-4 w-4 mr-1" />
+                    Y
                   </Button>
                 </div>
 
