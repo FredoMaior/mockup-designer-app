@@ -153,6 +153,12 @@ function App() {
   const [resizeStartPos, setResizeStartPos] = useState({ x: 0, y: 0 })
   const [resizeStartSize, setResizeStartSize] = useState(0)
 
+  // Rotation state
+  const [isRotating, setIsRotating] = useState(false)
+  const [rotateLayerId, setRotateLayerId] = useState(null)
+  const [rotateStartPos, setRotateStartPos] = useState({ x: 0, y: 0 })
+  const [rotateStartAngle, setRotateStartAngle] = useState(0)
+
   // Function to calculate dimensions in centimeters
   const calculateDimensions = useCallback((layer) => {
     const widthCm = (layer.size / 100) * TSHIRT_WIDTH_CM
@@ -552,7 +558,31 @@ function App() {
           : layer
       ));
     }
-  }, [isDragging, dragLayerId, isResizing, resizeLayerId, resizeStartPos, resizeStartSize]);
+
+    if (isRotating && rotateLayerId && canvasRef.current) {
+      e.preventDefault();
+      
+      const canvas = canvasRef.current;
+      const canvasRect = canvas.getBoundingClientRect();
+      
+      // Calculate angle from center of element
+      const layer = designLayers.find(l => l.id === rotateLayerId);
+      if (layer) {
+        const centerX = canvasRect.left + (layer.position.x / 100) * canvasRect.width;
+        const centerY = canvasRect.top + (layer.position.y / 100) * canvasRect.height;
+        
+        const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
+        const newRotation = Math.round(angle);
+        
+        // Update layer rotation
+        setDesignLayers(prev => prev.map(l =>
+          l.id === rotateLayerId 
+            ? { ...l, rotation: newRotation }
+            : l
+        ));
+      }
+    }
+  }, [isDragging, dragLayerId, isResizing, resizeLayerId, resizeStartPos, resizeStartSize, isRotating, rotateLayerId, designLayers]);
 
   const handleCanvasMouseUp = useCallback(() => {
     if (isDragging) {
@@ -568,7 +598,14 @@ function App() {
       setResizeStartSize(0);
       saveToHistory();
     }
-  }, [isDragging, isResizing, saveToHistory]);
+    if (isRotating) {
+      setIsRotating(false);
+      setRotateLayerId(null);
+      setRotateStartPos({ x: 0, y: 0 });
+      setRotateStartAngle(0);
+      saveToHistory();
+    }
+  }, [isDragging, isResizing, isRotating, saveToHistory]);
 
   // Resize handle mouse down
   const handleResizeMouseDown = useCallback((e, layerId) => {
@@ -584,9 +621,23 @@ function App() {
     setResizeStartSize(layer.size);
   }, [designLayers]);
 
+  // Rotation handle mouse down
+  const handleRotateMouseDown = useCallback((e, layerId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const layer = designLayers.find(l => l.id === layerId);
+    if (!layer || layer.locked) return;
+
+    setIsRotating(true);
+    setRotateLayerId(layerId);
+    setRotateStartPos({ x: e.clientX, y: e.clientY });
+    setRotateStartAngle(layer.rotation || 0);
+  }, [designLayers]);
+
   // Add event listeners for mouse events
   useEffect(() => {
-    if (isDragging || isResizing) {
+    if (isDragging || isResizing || isRotating) {
       document.addEventListener('mousemove', handleCanvasMouseMove);
       document.addEventListener('mouseup', handleCanvasMouseUp);
       
@@ -595,7 +646,7 @@ function App() {
         document.removeEventListener('mouseup', handleCanvasMouseUp);
       };
     }
-  }, [isDragging, isResizing, handleCanvasMouseMove, handleCanvasMouseUp]);
+  }, [isDragging, isResizing, isRotating, handleCanvasMouseMove, handleCanvasMouseUp]);
 
   const filteredTemplates = mockupTemplates.filter(template =>
     selectedCategory === 'all' || template.category === selectedCategory
@@ -1142,16 +1193,30 @@ function App() {
                   
                   {/* Resize handle - only show for selected layer */}
                   {selectedLayer === layer.id && !layer.locked && (
-                    <div
-                      className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-se-resize shadow-md hover:bg-blue-600 transition-colors"
-                      style={{
-                        transform: 'translate(50%, 50%)',
-                        zIndex: 1000
-                      }}
-                      onMouseDown={(e) => handleResizeMouseDown(e, layer.id)}
-                    >
-                      <Maximize2 className="w-2 h-2 text-white absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
-                    </div>
+                    <>
+                      <div
+                        className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-se-resize shadow-md hover:bg-blue-600 transition-colors"
+                        style={{
+                          transform: 'translate(50%, 50%)',
+                          zIndex: 1000
+                        }}
+                        onMouseDown={(e) => handleResizeMouseDown(e, layer.id)}
+                      >
+                        <Maximize2 className="w-2 h-2 text-white absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+                      </div>
+                      
+                      {/* Rotation handle - top left corner */}
+                      <div
+                        className="absolute top-0 left-0 w-4 h-4 bg-green-500 border-2 border-white rounded-full cursor-grab shadow-md hover:bg-green-600 transition-colors"
+                        style={{
+                          transform: 'translate(-50%, -50%)',
+                          zIndex: 1000
+                        }}
+                        onMouseDown={(e) => handleRotateMouseDown(e, layer.id)}
+                      >
+                        <RotateCw className="w-2 h-2 text-white absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+                      </div>
+                    </>
                   )}
                 </div>
               )
@@ -1235,27 +1300,6 @@ function App() {
                   })()
                 )}
                 
-                <div>
-                  <label className="block text-xs font-medium mb-1">Size (%)</label>
-                  <Input
-                    type="number"
-                    value={selectedLayerData.size}
-                    onChange={(e) => updateSelectedLayer({ size: parseFloat(e.target.value) })}
-                    className="w-full text-sm"
-                    step="0.1"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1">Rotation (deg)</label>
-                  <Input
-                    type="number"
-                    value={selectedLayerData.rotation}
-                    onChange={(e) => updateSelectedLayer({ rotation: parseFloat(e.target.value) })}
-                    className="w-full text-sm"
-                    step="1"
-                  />
-                </div>
-
                 <div className="flex space-x-2">
                   <Button
                     variant="outline"
