@@ -159,6 +159,71 @@ function App() {
   const [rotateStartPos, setRotateStartPos] = useState({ x: 0, y: 0 })
   const [rotateStartAngle, setRotateStartAngle] = useState(0)
 
+  // T-shirt color and size selection
+  const [selectedTshirtColor, setSelectedTshirtColor] = useState('white')
+  const [selectedSizes, setSelectedSizes] = useState({
+    S: 0,
+    M: 0,
+    L: 0,
+    XL: 0,
+    XXL: 0
+  })
+
+  // Available t-shirt colors
+  const tshirtColors = [
+    { id: 'black', name: 'Czarny', hex: '#000000' },
+    { id: 'gray', name: 'Szary', hex: '#6B7280' },
+    { id: 'white', name: 'Biały', hex: '#FFFFFF' },
+    { id: 'red', name: 'Czerwony', hex: '#DC2626' },
+    { id: 'blue', name: 'Niebieski', hex: '#2563EB' },
+    { id: 'navy', name: 'Granatowy', hex: '#1E3A8A' },
+    { id: 'green', name: 'Zielony', hex: '#16A34A' }
+  ]
+
+  // Function to update size quantity
+  const updateSizeQuantity = useCallback((size, quantity) => {
+    setSelectedSizes(prev => ({
+      ...prev,
+      [size]: Math.max(0, parseInt(quantity) || 0)
+    }))
+  }, [])
+
+  // Multi-part design system
+  const [currentPart, setCurrentPart] = useState('front')
+  const [partDesigns, setPartDesigns] = useState({
+    front: [],
+    back: [],
+    leftSleeve: [],
+    rightSleeve: []
+  })
+
+  // T-shirt parts configuration
+  const tshirtParts = [
+    { id: 'front', name: 'Przód', icon: 'Shirt' },
+    { id: 'back', name: 'Tył', icon: 'Shirt' },
+    { id: 'leftSleeve', name: 'Lewy Rękaw', icon: 'Move' },
+    { id: 'rightSleeve', name: 'Prawy Rękaw', icon: 'Move' }
+  ]
+
+  // Function to switch between t-shirt parts
+  const switchToPart = useCallback((partId) => {
+    // Save current design to current part
+    setPartDesigns(prev => ({
+      ...prev,
+      [currentPart]: designLayers
+    }))
+    
+    // Switch to new part and load its design
+    setCurrentPart(partId)
+    setDesignLayers(partDesigns[partId] || [])
+    setSelectedLayer(null)
+  }, [currentPart, designLayers, partDesigns])
+
+  // Update designLayers when switching parts
+  useEffect(() => {
+    setDesignLayers(partDesigns[currentPart] || [])
+  }, [currentPart, partDesigns])
+
   // Function to calculate dimensions in centimeters
   const calculateDimensions = useCallback((layer) => {
     const widthCm = (layer.size / 100) * TSHIRT_WIDTH_CM
@@ -478,21 +543,72 @@ function App() {
   }, [designLayers]);
 
   const handleAddToCart = useCallback(() => {
-    if (!savedDesignId.current) {
-      alert('Please save your design first!');
-      return;
+    // Save current design to current part before processing
+    const updatedPartDesigns = {
+      ...partDesigns,
+      [currentPart]: designLayers
     }
+    
+    // Prepare complete design data for all parts
+    const completeDesignData = {
+      tshirtColor: selectedTshirtColor,
+      sizes: selectedSizes,
+      parts: updatedPartDesigns,
+      template: selectedTemplate,
+      timestamp: new Date().toISOString()
+    }
+    
+    const designData = JSON.stringify(completeDesignData);
+    console.log('Complete design saved:', designData);
+
+    const newDesignId = `design_${Date.now()}`;
+    savedDesignId.current = newDesignId;
+
+    // Send email with design data (simulated)
+    console.log('Sending email with design data...');
+    console.log('Email content:', {
+      designId: newDesignId,
+      designData: completeDesignData,
+      emailSubject: `Nowy projekt koszulki - ${newDesignId}`,
+      emailBody: `
+        Nowy projekt koszulki został utworzony:
+        
+        ID Projektu: ${newDesignId}
+        Kolor koszulki: ${tshirtColors.find(c => c.id === selectedTshirtColor)?.name}
+        Rozmiary: ${Object.entries(selectedSizes).filter(([_, qty]) => qty > 0).map(([size, qty]) => `${size}: ${qty}szt`).join(', ')}
+        
+        Części z projektami:
+        - Przód: ${updatedPartDesigns.front.length} elementów
+        - Tył: ${updatedPartDesigns.back.length} elementów  
+        - Lewy rękaw: ${updatedPartDesigns.leftSleeve.length} elementów
+        - Prawy rękaw: ${updatedPartDesigns.rightSleeve.length} elementów
+        
+        Dane projektu w załączniku.
+      `
+    });
 
     if (window.parent) {
+      // Send design data to Wix
+      window.parent.postMessage({
+        type: 'designSaved',
+        payload: {
+          designId: newDesignId,
+          designData: designData
+        }
+      }, '*');
+      
+      // Add to cart
       window.parent.postMessage({
         type: 'addToCart',
         payload: {
-          designId: savedDesignId.current,
+          designId: newDesignId,
+          completeDesign: completeDesignData
         }
       }, '*');
     }
-    alert('Adding design to cart via Wix Studio...');
-  }, []);
+    
+    alert('Projekt zapisany i dodany do koszyka! Email z plikami zostanie wysłany automatycznie.');
+  }, [designLayers, partDesigns, currentPart, selectedTshirtColor, selectedSizes, selectedTemplate, tshirtColors]);
 
   // Improved drag and drop handlers
   const handleLayerMouseDown = useCallback((e, layerId) => {
@@ -666,17 +782,26 @@ function App() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-gray-900">Product Designer Pro</h1>
-                <p className="text-sm text-gray-600">Professional apparel customization tool with Freepik integration</p>
+                <p className="text-sm text-gray-600">Professional apparel customization tool</p>
               </div>
             </div>
+            
+            {/* T-shirt parts selector */}
+            <div className="flex items-center space-x-2 bg-gray-100 rounded-lg p-1">
+              {tshirtParts.map(part => (
+                <Button
+                  key={part.id}
+                  variant={currentPart === part.id ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => switchToPart(part.id)}
+                  className="text-xs"
+                >
+                  <Shirt className="h-3 w-3 mr-1" />
+                  {part.name}
+                </Button>
+              ))}
+            </div>
             <div className="flex items-center space-x-3">
-              <Input
-                placeholder="Freepik API Key"
-                value={freepikApiKey}
-                onChange={(e) => setFreepikApiKey(e.target.value)}
-                className="w-48 text-xs"
-                type="password"
-              />
               <Button
                 variant="outline"
                 size="sm"
@@ -686,10 +811,6 @@ function App() {
                 <Grid className="h-4 w-4 mr-2" />
                 Print Area
               </Button>
-              <Button variant="outline" size="sm" onClick={handleSaveDesign}>
-                <Save className="h-4 w-4 mr-2" />
-                Save Design
-              </Button>
               <Button
                 variant="default"
                 size="sm"
@@ -698,24 +819,6 @@ function App() {
               >
                 <Save className="h-4 w-4 mr-2" />
                 Dodaj do Koszyka
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={undo}
-                disabled={historyIndex <= 0}
-              >
-                <Undo className="h-4 w-4 mr-2" />
-                Undo
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={redo}
-                disabled={historyIndex >= history.length - 1}
-              >
-                <Redo className="h-4 w-4 mr-2" />
-                Redo
               </Button>
               <Button variant="outline" size="sm" onClick={handleDownload}>
                 <Download className="h-4 w-4 mr-2" />
@@ -731,18 +834,12 @@ function App() {
         <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
           <div className="p-4 border-b border-gray-200">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-5">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="upload" className="text-xs">
                   <Upload className="h-4 w-4" />
                 </TabsTrigger>
-                <TabsTrigger value="freepik" className="text-xs">
-                  <Search className="h-4 w-4" />
-                </TabsTrigger>
                 <TabsTrigger value="text" className="text-xs">
                   <Type className="h-4 w-4" />
-                </TabsTrigger>
-                <TabsTrigger value="shapes" className="text-xs">
-                  <Square className="h-4 w-4" />
                 </TabsTrigger>
                 <TabsTrigger value="templates" className="text-xs">
                   <Shirt className="h-4 w-4" />
@@ -772,13 +869,6 @@ function App() {
                     />
                   </CardContent>
                 </Card>
-              </TabsContent>
-
-              <TabsContent value="freepik" className="mt-4">
-                <FreepikSearch
-                  onSelectVector={handleFreepikVector}
-                  apiKey={freepikApiKey}
-                />
               </TabsContent>
 
               <TabsContent value="text" className="mt-4">
@@ -877,84 +967,90 @@ function App() {
                 </Card>
               </TabsContent>
 
-              <TabsContent value="shapes" className="mt-4">
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm">Shapes</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <Button onClick={() => addShape('rect')} className="w-full">
-                      <Square className="h-4 w-4 mr-2" />
-                      Add Rectangle
-                    </Button>
-                    <Button onClick={() => addShape('circle')} className="w-full">
-                      <Circle className="h-4 w-4 mr-2" />
-                      Add Circle
-                    </Button>
-                    {selectedLayerData?.type === 'shape' && (
-                      <div className="space-y-3 pt-3 border-t border-gray-200">
-                        <div>
-                          <label className="block text-xs font-medium mb-1">Fill Color</label>
-                          <input
-                            type="color"
-                            value={selectedLayerData.fillColor}
-                            onChange={(e) => updateSelectedLayer({ fillColor: e.target.value })}
-                            className="w-full h-8 border border-gray-300 rounded"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium mb-1">Stroke Color</label>
-                          <input
-                            type="color"
-                            value={selectedLayerData.strokeColor}
-                            onChange={(e) => updateSelectedLayer({ strokeColor: e.target.value })}
-                            className="w-full h-8 border border-gray-300 rounded"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium mb-1">Stroke Width</label>
-                          <Input
-                            type="number"
-                            value={selectedLayerData.strokeWidth}
-                            onChange={(e) => updateSelectedLayer({ strokeWidth: parseInt(e.target.value) })}
-                            className="w-full text-sm"
-                            min="0"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
               <TabsContent value="templates" className="mt-4">
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm">Product Templates</CardTitle>
+                    <CardTitle className="text-sm">Konfiguracja Produktu</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant={selectedCategory === 'all' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => handleCategorySelect('all')}
-                          className="text-xs"
-                        >
-                          All
-                        </Button>
-                        {productCategories.map(category => (
+                    <div className="space-y-4">
+                      {/* Wybór koloru koszulki */}
+                      <div>
+                        <label className="block text-xs font-medium mb-2">Kolor Koszulki</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {tshirtColors.map(color => (
+                            <button
+                              key={color.id}
+                              onClick={() => setSelectedTshirtColor(color.id)}
+                              className={`p-2 rounded-lg border-2 transition-colors ${
+                                selectedTshirtColor === color.id
+                                  ? 'border-blue-500 bg-blue-50'
+                                  : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                            >
+                              <div
+                                className="w-6 h-6 rounded-full mx-auto mb-1 border"
+                                style={{ 
+                                  backgroundColor: color.hex,
+                                  borderColor: color.id === 'white' ? '#E5E7EB' : color.hex
+                                }}
+                              ></div>
+                              <span className="text-xs">{color.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Wybór rozmiarów i ilości */}
+                      <div>
+                        <label className="block text-xs font-medium mb-2">Rozmiary i Ilość</label>
+                        <div className="space-y-2">
+                          {Object.keys(selectedSizes).map(size => (
+                            <div key={size} className="flex items-center justify-between">
+                              <span className="text-sm font-medium w-8">{size}</span>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={selectedSizes[size]}
+                                onChange={(e) => updateSizeQuantity(size, e.target.value)}
+                                className="w-20 text-sm"
+                                placeholder="0"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-2 text-xs text-gray-500">
+                          Łącznie: {Object.values(selectedSizes).reduce((sum, qty) => sum + qty, 0)} szt.
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      {/* Szablony produktów */}
+                      <div>
+                        <label className="block text-xs font-medium mb-2">Szablon Produktu</label>
+                        <div className="flex flex-wrap gap-2 mb-3">
                           <Button
-                            key={category.id}
-                            variant={selectedCategory === category.id ? 'default' : 'outline'}
+                            variant={selectedCategory === 'all' ? 'default' : 'outline'}
                             size="sm"
-                            onClick={() => handleCategorySelect(category.id)}
+                            onClick={() => handleCategorySelect('all')}
                             className="text-xs"
                           >
-                            <category.icon className="h-3 w-3 mr-1" />
-                            {category.name}
+                            All
                           </Button>
-                        ))}
+                          {productCategories.map(category => (
+                            <Button
+                              key={category.id}
+                              variant={selectedCategory === category.id ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => handleCategorySelect(category.id)}
+                              className="text-xs"
+                            >
+                              <category.icon className="h-3 w-3 mr-1" />
+                              {category.name}
+                            </Button>
+                          ))}
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         {filteredTemplates.map(template => (
@@ -1193,30 +1289,16 @@ function App() {
                   
                   {/* Resize handle - only show for selected layer */}
                   {selectedLayer === layer.id && !layer.locked && (
-                    <>
-                      <div
-                        className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-se-resize shadow-md hover:bg-blue-600 transition-colors"
-                        style={{
-                          transform: 'translate(50%, 50%)',
-                          zIndex: 1000
-                        }}
-                        onMouseDown={(e) => handleResizeMouseDown(e, layer.id)}
-                      >
-                        <Maximize2 className="w-2 h-2 text-white absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
-                      </div>
-                      
-                      {/* Rotation handle - top left corner */}
-                      <div
-                        className="absolute top-0 left-0 w-4 h-4 bg-green-500 border-2 border-white rounded-full cursor-grab shadow-md hover:bg-green-600 transition-colors"
-                        style={{
-                          transform: 'translate(-50%, -50%)',
-                          zIndex: 1000
-                        }}
-                        onMouseDown={(e) => handleRotateMouseDown(e, layer.id)}
-                      >
-                        <RotateCw className="w-2 h-2 text-white absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
-                      </div>
-                    </>
+                    <div
+                      className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500 border-2 border-white rounded-full cursor-se-resize shadow-md hover:bg-blue-600 transition-colors"
+                      style={{
+                        transform: 'translate(50%, 50%)',
+                        zIndex: 1000
+                      }}
+                      onMouseDown={(e) => handleResizeMouseDown(e, layer.id)}
+                    >
+                      <Maximize2 className="w-2 h-2 text-white absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+                    </div>
                   )}
                 </div>
               )
@@ -1300,6 +1382,17 @@ function App() {
                   })()
                 )}
                 
+                <div>
+                  <label className="block text-xs font-medium mb-1">Rotation (deg)</label>
+                  <Input
+                    type="number"
+                    value={selectedLayerData.rotation || 0}
+                    onChange={(e) => updateSelectedLayer({ rotation: parseFloat(e.target.value) })}
+                    className="w-full text-sm"
+                    step="1"
+                  />
+                </div>
+
                 <div className="flex space-x-2">
                   <Button
                     variant="outline"
