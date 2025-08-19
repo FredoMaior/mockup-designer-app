@@ -205,6 +205,19 @@ function App() {
     { id: 'rightSleeve', name: 'Prawy Rękaw', icon: 'Move' }
   ]
 
+  // Mapping of t-shirt parts to mockup images
+  const partMockups = {
+    front: '/mockup_templates/tshirt_front_view.png',
+    back: '/mockup_templates/tshirt_back_view.png',
+    leftSleeve: '/mockup_templates/tshirt_left_sleeve_fixed.png',
+    rightSleeve: '/mockup_templates/tshirt_right_sleeve_fixed.png'
+  }
+
+  // Get current part mockup
+  const getCurrentMockup = useCallback(() => {
+    return partMockups[currentPart] || partMockups.front
+  }, [currentPart])
+
   // Function to switch between t-shirt parts
   const switchToPart = useCallback((partId) => {
     // Save current design to current part
@@ -1192,7 +1205,7 @@ function App() {
             onMouseMove={handleCanvasMouseMove}
             onMouseUp={handleCanvasMouseUp}
           >
-            <img src={selectedTemplate.image} alt="Mockup" className="w-full h-full object-contain" />
+            <img src={getCurrentMockup()} alt={`Mockup - ${tshirtParts.find(p => p.id === currentPart)?.name}`} className="w-full h-full object-contain" />
             
             {/* Print Area Overlay */}
             {showPrintArea && (
